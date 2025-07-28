@@ -14,11 +14,58 @@ app.secret_key = 'supersecretkey'  # Cambia esto por una clave segura en producc
 # Variables globales para el control de descargas
 multi_progress = {}
 cancelled_downloads = set()
+download_queue_storage = []  # Cola persistente
+queue_running = False
 
 # Configuración
 MAX_CONCURRENT_DOWNLOADS = 5
 STATIC_DIR = 'static'
 TEMP_DIR = 'temp_segments'
+DEFAULT_QUALITY = 'best'  # best, 1080p, 720p, 480p
+
+# Funciones para persistencia
+def save_download_state():
+    """Guarda el estado de las descargas en un archivo JSON"""
+    import json
+    try:
+        state = {
+            'multi_progress': multi_progress,
+            'download_queue': download_queue_storage,
+            'queue_running': queue_running
+        }
+        with open('download_state.json', 'w', encoding='utf-8') as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Error guardando estado: {e}")
+
+def load_download_state():
+    """Carga el estado de las descargas desde un archivo JSON"""
+    import json
+    global multi_progress, download_queue_storage, queue_running
+    try:
+        if os.path.exists('download_state.json'):
+            with open('download_state.json', 'r', encoding='utf-8') as f:
+                state = json.load(f)
+                multi_progress = state.get('multi_progress', {})
+                download_queue_storage = state.get('download_queue', [])
+                queue_running = state.get('queue_running', False)
+                
+                # Limpiar descargas que ya no están activas
+                active_downloads = {}
+                for download_id, progress in multi_progress.items():
+                    if progress['status'] == 'downloading':
+                        # Marcar como pausada si estaba descargando
+                        progress['status'] = 'paused'
+                        progress['can_resume'] = True
+                    active_downloads[download_id] = progress
+                multi_progress = active_downloads
+                
+                print(f"Estado cargado: {len(multi_progress)} descargas, {len(download_queue_storage)} en cola")
+    except Exception as e:
+        print(f"Error cargando estado: {e}")
+
+# Cargar estado al iniciar
+load_download_state()
 
 default_html = '''
 <!DOCTYPE html>
@@ -785,6 +832,9 @@ default_html = '''
                       ▶️
                     </button>
                     {% endif %}
+                    <button class="btn btn-outline-warning btn-sm mb-1" onclick="renombrarArchivo('{{item.archivo}}')" title="Renombrar archivo">
+                      ✏️
+                    </button>
                     <button class="btn btn-outline-danger btn-sm" onclick="eliminarArchivo('{{item.archivo}}')" title="Eliminar archivo">
                       🗑️
                     </button>
@@ -1071,137 +1121,185 @@ function filterHistorial() {
     });
 }
 
-// Sistema de cola de descargas
+// Función para reanudar descarga
+function reanudarDescarga(download_id) {
+    if (confirm('¿Reanudar esta descarga desde donde se quedó?')) {
+        fetch('/reanudar/' + download_id, {
+            method: 'POST'
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                showNotification('Descarga reanudada', 'success');
+                // Actualizar la interfaz
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showNotification('Error al reanudar: ' + data.error, 'danger');
+            }
+        }).catch(error => {
+            showNotification('Error al reanudar: ' + error.message, 'danger');
+        });
+    }
+}
+
+// Función para renombrar archivo
+function renombrarArchivo(filename) {
+    const nuevoNombre = prompt('Nuevo nombre para el archivo (sin extensión):', filename.replace('.mp4', ''));
+    
+    if (nuevoNombre && nuevoNombre.trim() !== '' && nuevoNombre !== filename.replace('.mp4', '')) {
+        fetch('/renombrar/' + encodeURIComponent(filename), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nuevo_nombre: nuevoNombre.trim() })
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                showNotification('Archivo renombrado correctamente', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showNotification('Error al renombrar: ' + data.error, 'danger');
+            }
+        }).catch(error => {
+            showNotification('Error al renombrar: ' + error.message, 'danger');
+        });
+    }
+}
+
+// Mejorar la función de cola
 function addToQueue() {
     const url = document.getElementById('queue-url-input').value.trim();
+    const quality = userConfig.quality || 'best';
+    
     if (!url) {
         showNotification('Introduce una URL válida', 'warning');
         return;
     }
     
-    downloadQueue.push({
-        id: Date.now(),
-        url: url,
-        status: 'pending'
+    fetch('/api/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'add',
+            url: url,
+            name: '',
+            quality: quality
+        })
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            document.getElementById('queue-url-input').value = '';
+            updateQueueDisplay();
+            showNotification('URL añadida a la cola', 'success');
+        } else {
+            showNotification('Error: ' + data.error, 'danger');
+        }
+    }).catch(error => {
+        showNotification('Error: ' + error.message, 'danger');
     });
-    
-    document.getElementById('queue-url-input').value = '';
-    updateQueueDisplay();
-    showNotification('URL añadida a la cola', 'success');
 }
 
 function addToQueueFromForm() {
     const url = document.getElementById('m3u8-url').value.trim();
     const name = document.getElementById('output-name').value.trim();
+    const quality = userConfig.quality || 'best';
     
     if (!url) {
         showNotification('Introduce una URL en el formulario principal', 'warning');
         return;
     }
     
-    downloadQueue.push({
-        id: Date.now(),
-        url: url,
-        name: name,
-        status: 'pending'
+    fetch('/api/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'add',
+            url: url,
+            name: name,
+            quality: quality
+        })
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            updateQueueDisplay();
+            showNotification('URL añadida a la cola desde el formulario', 'success');
+        } else {
+            showNotification('Error: ' + data.error, 'danger');
+        }
+    }).catch(error => {
+        showNotification('Error: ' + error.message, 'danger');
     });
-    
-    updateQueueDisplay();
-    showNotification('URL añadida a la cola desde el formulario', 'success');
 }
 
 function removeFromQueue(id) {
-    downloadQueue = downloadQueue.filter(item => item.id !== id);
-    updateQueueDisplay();
-    showNotification('Elemento eliminado de la cola', 'info');
+    fetch('/api/queue', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id })
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            updateQueueDisplay();
+            showNotification('Elemento eliminado de la cola', 'info');
+        } else {
+            showNotification('Error: ' + data.error, 'danger');
+        }
+    }).catch(error => {
+        showNotification('Error: ' + error.message, 'danger');
+    });
 }
 
 function updateQueueDisplay() {
-    const container = document.getElementById('download-queue');
-    
-    if (downloadQueue.length === 0) {
-        container.innerHTML = '<p class="text-center text-muted">La cola está vacía</p>';
-        return;
-    }
-    
-    container.innerHTML = downloadQueue.map((item, index) => `
-        <div class="queue-item">
-            <div class="queue-number">${index + 1}</div>
-            <div class="flex-grow-1 me-2">
-                <div class="text-truncate">${item.name || 'Sin nombre'}</div>
-                <small class="text-muted text-break">${item.url}</small>
-            </div>
-            <div class="d-flex gap-1">
-                <button class="btn btn-outline-danger btn-sm" onclick="removeFromQueue(${item.id})" title="Eliminar de la cola">
-                    🗑️
-                </button>
-            </div>
-        </div>
-    `).join('');
+    fetch('/api/queue')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const container = document.getElementById('download-queue');
+                const toggleBtn = document.getElementById('queue-toggle-text');
+                
+                if (data.queue.length === 0) {
+                    container.innerHTML = '<p class="text-center text-muted">La cola está vacía</p>';
+                } else {
+                    container.innerHTML = data.queue.map((item, index) => `
+                        <div class="queue-item">
+                            <div class="queue-number">${index + 1}</div>
+                            <div class="flex-grow-1 me-2">
+                                <div class="text-truncate">${item.name || 'Sin nombre'}</div>
+                                <small class="text-muted text-break">${item.url}</small>
+                                <div class="small text-info">Calidad: ${item.quality || 'best'}</div>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-outline-danger btn-sm" onclick="removeFromQueue('${item.id}')" title="Eliminar de la cola">
+                                    🗑️
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+                
+                // Actualizar botón de toggle
+                if (toggleBtn) {
+                    toggleBtn.textContent = data.running ? '⏸️ Pausar' : '▶️ Iniciar';
+                }
+                queueRunning = data.running;
+            }
+        })
+        .catch(error => {
+            console.error('Error actualizando cola:', error);
+        });
 }
 
 function toggleQueue() {
-    queueRunning = !queueRunning;
-    const button = document.getElementById('queue-toggle-text');
+    const action = queueRunning ? 'stop' : 'start';
     
-    if (queueRunning) {
-        button.textContent = '⏸️ Pausar';
-        processQueue();
-        showNotification('Cola iniciada', 'success');
-    } else {
-        button.textContent = '▶️ Iniciar';
-        showNotification('Cola pausada', 'warning');
-    }
-}
-
-async function processQueue() {
-    if (!queueRunning || downloadQueue.length === 0) return;
-    
-    const activeDownloads = Object.keys(multi_progress || {}).filter(id => 
-        multi_progress[id].status === 'downloading'
-    ).length;
-    
-    if (activeDownloads >= userConfig.maxConcurrent) {
-        setTimeout(processQueue, 2000);
-        return;
-    }
-    
-    const nextItem = downloadQueue.find(item => item.status === 'pending');
-    if (!nextItem) {
-        setTimeout(processQueue, 2000);
-        return;
-    }
-    
-    nextItem.status = 'downloading';
-    updateQueueDisplay();
-    
-    // Descargar el siguiente elemento
-    try {
-        let params = 'm3u8_url=' + encodeURIComponent(nextItem.url);
-        if (nextItem.name) params += '&output_name=' + encodeURIComponent(nextItem.name);
-        
-        const response = await fetch('/descargar', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: params
-        });
-        
-        const data = await response.json();
-        if (data.download_id) {
-            mostrarDescargaActiva(data.download_id, nextItem.url);
-            nextItem.status = 'started';
-            downloadQueue = downloadQueue.filter(item => item.id !== nextItem.id);
+    fetch('/api/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: action })
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            queueRunning = !queueRunning;
             updateQueueDisplay();
+            showNotification(data.message, 'success');
         } else {
-            nextItem.status = 'error';
-            showNotification(`Error al iniciar descarga: ${data.error}`, 'danger');
+            showNotification('Error: ' + data.error, 'danger');
         }
-    } catch (error) {
-        nextItem.status = 'error';
-        showNotification(`Error en la cola: ${error.message}`, 'danger');
-    }
-    
-    setTimeout(processQueue, 1000);
+    }).catch(error => {
+        showNotification('Error: ' + error.message, 'danger');
+    });
 }
 
 // Actualizar estadísticas del dashboard
@@ -1240,9 +1338,36 @@ document.addEventListener('DOMContentLoaded', function() {
     updateQueueDisplay();
     updateDashboardStats();
     
+    // Cargar descargas activas persistentes
+    loadActiveDownloads();
+    
     // Actualizar estadísticas cada 30 segundos
     setInterval(updateDashboardStats, 30000);
+    
+    // Actualizar cola cada 10 segundos
+    setInterval(updateQueueDisplay, 10000);
 });
+
+// Función para cargar descargas activas al refrescar
+function loadActiveDownloads() {
+    // Cargar todas las descargas que no están completadas
+    fetch('/api/active_downloads')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.downloads) {
+                const activasContainer = document.getElementById('descargas-activas');
+                Object.keys(data.downloads).forEach(download_id => {
+                    const download = data.downloads[download_id];
+                    if (['downloading', 'paused', 'error', 'cancelled'].includes(download.status)) {
+                        mostrarDescargaActiva(download_id, download.url);
+                    }
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error cargando descargas activas:', error);
+        });
+}
 
 // Funciones originales (mantenidas)
 function playM3U8() {
@@ -1398,7 +1523,8 @@ function actualizarProgreso(download_id) {
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-error';
             if (stats) stats.innerText = 'Error en la descarga';
-            document.getElementById('descarga-' + download_id).innerHTML += `
+            
+            let buttonsHtml = `
                 <div class='mt-2 text-danger'>${data.error}</div>
                 <div class='mt-2 url-display small'>
                     <strong>🔗 URL:</strong> <span class="text-break">${data.url || 'N/A'}</span>
@@ -1406,7 +1532,17 @@ function actualizarProgreso(download_id) {
                 <div class='mt-2'>
                     <button class='btn btn-warning btn-sm me-2' onclick='reintentarDescarga("${download_id}")' title='Reintentar descarga'>
                         🔄 Reintentar
-                    </button>
+                    </button>`;
+            
+            // Añadir botón de reanudar si es posible
+            if (data.can_resume) {
+                buttonsHtml += `
+                    <button class='btn btn-info btn-sm me-2' onclick='reanudarDescarga("${download_id}")' title='Reanudar descarga'>
+                        ▶️ Continuar
+                    </button>`;
+            }
+            
+            buttonsHtml += `
                     <button class='btn btn-success btn-sm me-2' onclick='reproducirUrlActiva("${download_id}")' title='Reproducir video'>
                         ▶️ Reproducir
                     </button>
@@ -1414,13 +1550,16 @@ function actualizarProgreso(download_id) {
                         🗑️ Quitar
                     </button>
                 </div>`;
+                
+            document.getElementById('descarga-' + download_id).innerHTML += buttonsHtml;
             showNotification(`Error en descarga: ${data.error}`, 'danger');
         } else if (data.status === 'cancelled') {
             if (archivo) archivo.innerHTML = `<span class="status-indicator status-cancelled"></span>🚫 Descarga cancelada`;
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-cancelled';
             if (stats) stats.innerText = 'Cancelado por el usuario';
-            document.getElementById('descarga-' + download_id).innerHTML += `
+            
+            let buttonsHtml = `
                 <div class='mt-2 text-warning'>Descarga cancelada por el usuario</div>
                 <div class='mt-2 url-display small'>
                     <strong>🔗 URL:</strong> <span class="text-break">${data.url || 'N/A'}</span>
@@ -1428,6 +1567,41 @@ function actualizarProgreso(download_id) {
                 <div class='mt-2'>
                     <button class='btn btn-warning btn-sm me-2' onclick='reintentarDescarga("${download_id}")' title='Reintentar descarga'>
                         🔄 Reintentar
+                    </button>`;
+            
+            // Añadir botón de reanudar si es posible
+            if (data.can_resume) {
+                buttonsHtml += `
+                    <button class='btn btn-info btn-sm me-2' onclick='reanudarDescarga("${download_id}")' title='Reanudar descarga'>
+                        ▶️ Continuar
+                    </button>`;
+            }
+            
+            buttonsHtml += `
+                    <button class='btn btn-success btn-sm me-2' onclick='reproducirUrlActiva("${download_id}")' title='Reproducir video'>
+                        ▶️ Reproducir
+                    </button>
+                    <button class='btn btn-outline-secondary btn-sm' onclick='eliminarDescargaActiva("${download_id}")' title='Eliminar de la lista'>
+                        🗑️ Quitar
+                    </button>
+                </div>`;
+                
+            document.getElementById('descarga-' + download_id).innerHTML += buttonsHtml;
+            showNotification('Descarga cancelada', 'warning');
+        } else if (data.status === 'paused') {
+            if (archivo) archivo.innerHTML = `<span class="status-indicator status-cancelled"></span>⏸️ Descarga pausada`;
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            if (descargaDiv) descargaDiv.className += ' descarga-cancelled';
+            if (stats) stats.innerText = 'Pausada - se puede reanudar';
+            
+            document.getElementById('descarga-' + download_id).innerHTML += `
+                <div class='mt-2 text-info'>Descarga pausada - puedes continuarla</div>
+                <div class='mt-2 url-display small'>
+                    <strong>🔗 URL:</strong> <span class="text-break">${data.url || 'N/A'}</span>
+                </div>
+                <div class='mt-2'>
+                    <button class='btn btn-info btn-sm me-2' onclick='reanudarDescarga("${download_id}")' title='Continuar descarga'>
+                        ▶️ Continuar
                     </button>
                     <button class='btn btn-success btn-sm me-2' onclick='reproducirUrlActiva("${download_id}")' title='Reproducir video'>
                         ▶️ Reproducir
@@ -1436,7 +1610,6 @@ function actualizarProgreso(download_id) {
                         🗑️ Quitar
                     </button>
                 </div>`;
-            showNotification('Descarga cancelada', 'warning');
         }
     });
 }
@@ -1813,6 +1986,8 @@ def descargar():
     
     m3u8_url = request.form.get('m3u8_url', '').strip()
     output_name = request.form.get('output_name', '').strip()
+    quality = request.form.get('quality', DEFAULT_QUALITY).strip()
+    resume_id = request.form.get('resume_id', '').strip()  # Para reanudar
     
     # Validaciones de entrada
     if not m3u8_url:
@@ -1821,36 +1996,46 @@ def descargar():
     if not is_valid_m3u8_url(m3u8_url):
         return jsonify({'error': 'URL M3U8 no válida'}), 400
     
-    # Procesar nombre del archivo
-    if output_name:
-        output_name = sanitize_filename(output_name)
-        if not output_name.lower().endswith('.mp4'):
-            output_name += '.mp4'
-        output_file = output_name
+    # Si es una reanudación, usar el ID existente
+    if resume_id and resume_id in multi_progress:
+        download_id = resume_id
+        output_file = multi_progress[download_id]['output_file']
+        multi_progress[download_id]['status'] = 'downloading'
+        multi_progress[download_id]['can_resume'] = False
     else:
-        output_file = f'video_{uuid.uuid4().hex[:8]}.mp4'
-    
-    # Verificar si el archivo ya existe
-    static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
-    if os.path.exists(os.path.join(static_dir, output_file)):
-        base_name = output_file[:-4]  # Sin .mp4
-        counter = 1
-        while os.path.exists(os.path.join(static_dir, f"{base_name}_{counter}.mp4")):
-            counter += 1
-        output_file = f"{base_name}_{counter}.mp4"
-    
-    # Crear ID único para la descarga
-    download_id = str(uuid.uuid4())
-    multi_progress[download_id] = {
-        'total': 0,
-        'current': 0,
-        'status': 'downloading',
-        'error': '',
-        'porcentaje': 0,
-        'output_file': output_file,
-        'url': m3u8_url,
-        'start_time': time.time()
-    }
+        # Procesar nombre del archivo
+        if output_name:
+            output_name = sanitize_filename(output_name)
+            if not output_name.lower().endswith('.mp4'):
+                output_name += '.mp4'
+            output_file = output_name
+        else:
+            output_file = f'video_{uuid.uuid4().hex[:8]}.mp4'
+        
+        # Verificar si el archivo ya existe
+        static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
+        if os.path.exists(os.path.join(static_dir, output_file)):
+            base_name = output_file[:-4]  # Sin .mp4
+            counter = 1
+            while os.path.exists(os.path.join(static_dir, f"{base_name}_{counter}.mp4")):
+                counter += 1
+            output_file = f"{base_name}_{counter}.mp4"
+        
+        # Crear ID único para la descarga
+        download_id = str(uuid.uuid4())
+        multi_progress[download_id] = {
+            'total': 0,
+            'current': 0,
+            'status': 'downloading',
+            'error': '',
+            'porcentaje': 0,
+            'output_file': output_file,
+            'url': m3u8_url,
+            'quality': quality,
+            'start_time': time.time(),
+            'can_resume': False,
+            'downloaded_segments': []
+        }
     
     def run_download():
         # Crear directorio temporal único para esta descarga (fuera del try)
@@ -1860,6 +2045,7 @@ def descargar():
             # Verificar si ya fue cancelado antes de empezar
             if download_id in cancelled_downloads:
                 multi_progress[download_id]['status'] = 'cancelled'
+                save_download_state()
                 return
                 
             # Crear el directorio temporal
@@ -1867,36 +2053,64 @@ def descargar():
                 os.makedirs(temp_dir, exist_ok=True)
             original_dir = os.getcwd()
             
-            # Descarga de segmentos con directorio específico
-            downloader = M3U8Downloader(m3u8_url=m3u8_url, output_filename=output_file, max_workers=20, temp_dir=temp_dir)
+            # Descarga de segmentos con directorio específico y calidad
+            downloader = M3U8Downloader(
+                m3u8_url=m3u8_url, 
+                output_filename=output_file, 
+                max_workers=20, 
+                temp_dir=temp_dir
+            )
             segment_urls = downloader._get_segment_urls()
             multi_progress[download_id]['total'] = len(segment_urls)
+            
+            # Obtener segmentos ya descargados para reanudación
+            downloaded_segments = multi_progress[download_id].get('downloaded_segments', [])
+            start_index = len(downloaded_segments)
             
             for i, url in enumerate(segment_urls):
                 # Verificar cancelación en cada iteración
                 if download_id in cancelled_downloads:
                     multi_progress[download_id]['status'] = 'cancelled'
                     multi_progress[download_id]['error'] = 'Descarga cancelada por el usuario'
+                    multi_progress[download_id]['can_resume'] = True
+                    save_download_state()
                     return
+                
+                # Saltar segmentos ya descargados
+                if i < start_index:
+                    multi_progress[download_id]['current'] = i + 1
+                    continue
                     
                 try:
                     downloader._download_segment(url, i)
                     seg_path = os.path.join(temp_dir, f'segment_{i:05d}.ts')
                     if not os.path.exists(seg_path):
                         raise FileNotFoundError(f"No se encontró el archivo {seg_path} tras la descarga.")
+                    
+                    # Marcar segmento como descargado
+                    multi_progress[download_id]['downloaded_segments'].append(i)
+                    
                 except Exception as err:
                     multi_progress[download_id]['error'] = f"Error al descargar el segmento {i+1}: {err}"
                     multi_progress[download_id]['status'] = 'error'
+                    multi_progress[download_id]['can_resume'] = True
+                    save_download_state()
                     break
                     
                 porcentaje = int(((i + 1) / len(segment_urls)) * 100) if len(segment_urls) > 0 else 0
                 multi_progress[download_id]['current'] = i + 1
                 multi_progress[download_id]['porcentaje'] = porcentaje
                 
+                # Guardar estado cada 10 segmentos
+                if (i + 1) % 10 == 0:
+                    save_download_state()
+                
             # Verificar cancelación antes de la fusión
             if download_id in cancelled_downloads:
                 multi_progress[download_id]['status'] = 'cancelled'
                 multi_progress[download_id]['error'] = 'Descarga cancelada por el usuario'
+                multi_progress[download_id]['can_resume'] = True
+                save_download_state()
                 return
                 
             # Fusión y movimiento del archivo MP4
@@ -1912,6 +2126,7 @@ def descargar():
                     os.replace(output_path, static_path)
                     multi_progress[download_id]['status'] = 'done'
                     multi_progress[download_id]['end_time'] = time.time()
+                    multi_progress[download_id]['can_resume'] = False
                     
                     # Guardar metadatos del video (URL y fecha de descarga)
                     try:
@@ -1921,14 +2136,19 @@ def descargar():
                 else:
                     multi_progress[download_id]['status'] = 'error'
                     multi_progress[download_id]['error'] = 'No se pudo descargar el video o el archivo está vacío.'
+                    multi_progress[download_id]['can_resume'] = True
                     
         except Exception as e:
             multi_progress[download_id]['status'] = 'error'
             multi_progress[download_id]['error'] = str(e)
+            multi_progress[download_id]['can_resume'] = True
         finally:
+            # Guardar estado final
+            save_download_state()
+            
             # Limpiar el directorio temporal específico de esta descarga
             try:
-                if os.path.exists(temp_dir):
+                if os.path.exists(temp_dir) and multi_progress[download_id]['status'] == 'done':
                     import shutil
                     shutil.rmtree(temp_dir)
             except Exception as cleanup_error:
@@ -1939,6 +2159,7 @@ def descargar():
     
     thread = threading.Thread(target=run_download)
     thread.start()
+    save_download_state()
     return jsonify({'download_id': download_id}), 202
 
 @app.route('/progreso/<download_id>', methods=['GET'])
@@ -1994,26 +2215,100 @@ def eliminar_archivo(filename):
     except Exception as e:
         return jsonify({'success': False, 'error': f'Error al eliminar el archivo: {str(e)}'}), 500
 
-@app.route('/eliminar_descarga/<download_id>', methods=['DELETE'])
-def eliminar_descarga_activa(download_id):
+@app.route('/reanudar/<download_id>', methods=['POST'])
+def reanudar_descarga(download_id):
+    """Reanuda una descarga pausada o con error"""
+    if download_id not in multi_progress:
+        return jsonify({'success': False, 'error': 'ID de descarga no encontrado.'}), 404
+    
+    download_info = multi_progress[download_id]
+    
+    if not download_info.get('can_resume', False):
+        return jsonify({'success': False, 'error': 'Esta descarga no se puede reanudar.'}), 400
+    
+    if download_info['status'] == 'downloading':
+        return jsonify({'success': False, 'error': 'La descarga ya está en progreso.'}), 400
+    
+    # Verificar límite de descargas concurrentes
+    active_downloads = sum(1 for d in multi_progress.values() if d['status'] == 'downloading')
+    if active_downloads >= MAX_CONCURRENT_DOWNLOADS:
+        return jsonify({
+            'success': False,
+            'error': f'Máximo {MAX_CONCURRENT_DOWNLOADS} descargas simultáneas permitidas.'
+        }), 429
+    
+    # Iniciar descarga con reanudación
     try:
-        if download_id not in multi_progress:
-            return jsonify({'success': False, 'error': 'ID de descarga no encontrado.'}), 404
+        params = {
+            'm3u8_url': download_info['url'],
+            'output_name': download_info['output_file'].replace('.mp4', ''),
+            'quality': download_info.get('quality', DEFAULT_QUALITY),
+            'resume_id': download_id
+        }
         
-        status = multi_progress[download_id]['status']
+        # Simular la llamada POST interna
+        with app.test_request_context('/descargar', method='POST', data=params):
+            result = descargar()
+            
+        return jsonify({'success': True, 'message': 'Descarga reanudada'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/renombrar/<filename>', methods=['POST'])
+def renombrar_archivo(filename):
+    """Renombra un archivo descargado"""
+    try:
+        data = request.get_json()
+        nuevo_nombre = data.get('nuevo_nombre', '').strip()
         
-        # Solo permitir eliminar descargas que no están activamente descargando
-        if status == 'downloading':
-            return jsonify({'success': False, 'error': 'No se puede eliminar una descarga en progreso. Cancélala primero.'}), 400
+        if not nuevo_nombre:
+            return jsonify({'success': False, 'error': 'Nuevo nombre no proporcionado.'}), 400
         
-        # Eliminar la descarga del progreso
-        del multi_progress[download_id]
-        cancelled_downloads.discard(download_id)
+        # Sanitizar el nuevo nombre
+        nuevo_nombre = sanitize_filename(nuevo_nombre)
+        if not nuevo_nombre.lower().endswith('.mp4'):
+            nuevo_nombre += '.mp4'
         
-        return jsonify({'success': True, 'message': 'Descarga eliminada de la lista.'}), 200
+        # Validar que el archivo original existe
+        static_dir = os.path.join(os.path.dirname(__file__), 'static')
+        archivo_original = os.path.join(static_dir, filename)
+        
+        if not os.path.exists(archivo_original):
+            return jsonify({'success': False, 'error': 'El archivo no existe.'}), 404
+        
+        # Verificar que el nuevo nombre no existe
+        archivo_nuevo = os.path.join(static_dir, nuevo_nombre)
+        if os.path.exists(archivo_nuevo):
+            return jsonify({'success': False, 'error': 'Ya existe un archivo con ese nombre.'}), 400
+        
+        # Renombrar el archivo
+        os.rename(archivo_original, archivo_nuevo)
+        
+        # Renombrar también el archivo de metadatos si existe
+        metadata_original = os.path.join(static_dir, f"{filename}.meta")
+        metadata_nuevo = os.path.join(static_dir, f"{nuevo_nombre}.meta")
+        
+        if os.path.exists(metadata_original):
+            try:
+                # Actualizar el contenido del metadata con el nuevo nombre
+                metadata = load_video_metadata(filename)
+                if metadata:
+                    metadata['filename'] = nuevo_nombre
+                    with open(metadata_nuevo, 'w', encoding='utf-8') as f:
+                        import json
+                        json.dump(metadata, f, ensure_ascii=False, indent=2)
+                os.remove(metadata_original)
+            except Exception as meta_error:
+                print(f"Error al actualizar metadatos: {meta_error}")
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Archivo renombrado de "{filename}" a "{nuevo_nombre}"',
+            'nuevo_nombre': nuevo_nombre
+        })
         
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Error al eliminar la descarga: {str(e)}'}), 500
+        return jsonify({'success': False, 'error': f'Error al renombrar: {str(e)}'}), 500
 
 @app.route('/static/<path:filename>', methods=['GET'])
 def serve_static(filename):
@@ -2130,29 +2425,62 @@ def handle_config():
 @app.route('/api/queue', methods=['GET', 'POST', 'DELETE'])
 def handle_download_queue():
     """Endpoint para manejar la cola de descargas"""
+    global download_queue_storage, queue_running
+    
     if request.method == 'GET':
-        # Devolver cola actual (podrías implementar persistencia)
         return jsonify({
             'success': True,
-            'queue': [],  # Cola vacía por defecto
-            'status': 'stopped'
+            'queue': download_queue_storage,
+            'running': queue_running,
+            'count': len(download_queue_storage)
         })
     
     elif request.method == 'POST':
         try:
             data = request.get_json()
-            url = data.get('url', '').strip()
-            name = data.get('name', '').strip()
+            action = data.get('action', 'add')
             
-            if not url or not is_valid_m3u8_url(url):
-                return jsonify({'success': False, 'error': 'URL M3U8 no válida'}), 400
+            if action == 'add':
+                url = data.get('url', '').strip()
+                name = data.get('name', '').strip()
+                quality = data.get('quality', DEFAULT_QUALITY)
+                
+                if not url or not is_valid_m3u8_url(url):
+                    return jsonify({'success': False, 'error': 'URL M3U8 no válida'}), 400
+                
+                item = {
+                    'id': str(uuid.uuid4()),
+                    'url': url,
+                    'name': name if name else f'video_{uuid.uuid4().hex[:8]}',
+                    'quality': quality,
+                    'status': 'pending',
+                    'added_time': time.time()
+                }
+                
+                download_queue_storage.append(item)
+                save_download_state()
+                
+                return jsonify({
+                    'success': True, 
+                    'message': 'URL añadida a la cola',
+                    'item': item
+                })
             
-            # Aquí podrías añadir a una cola persistente
-            return jsonify({
-                'success': True, 
-                'message': 'URL añadida a la cola',
-                'item': {'url': url, 'name': name, 'id': str(uuid.uuid4())}
-            })
+            elif action == 'start':
+                queue_running = True
+                save_download_state()
+                # Iniciar procesamiento en un hilo separado
+                threading.Thread(target=process_download_queue, daemon=True).start()
+                return jsonify({'success': True, 'message': 'Cola iniciada'})
+            
+            elif action == 'stop':
+                queue_running = False
+                save_download_state()
+                return jsonify({'success': True, 'message': 'Cola detenida'})
+            
+            else:
+                return jsonify({'success': False, 'error': 'Acción no válida'}), 400
+                
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
     
@@ -2160,15 +2488,98 @@ def handle_download_queue():
         try:
             data = request.get_json()
             item_id = data.get('id')
-            # Aquí podrías eliminar de la cola persistente
+            
+            if not item_id:
+                return jsonify({'success': False, 'error': 'ID no proporcionado'}), 400
+            
+            # Buscar y eliminar el elemento
+            download_queue_storage = [item for item in download_queue_storage if item['id'] != item_id]
+            save_download_state()
+            
             return jsonify({'success': True, 'message': 'Elemento eliminado de la cola'})
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
     
     return jsonify({'success': False, 'error': 'Método no permitido'}), 405
 
-@app.route('/api/analytics', methods=['GET'])
-def get_analytics():
+def process_download_queue():
+    """Procesa la cola de descargas automáticamente"""
+    global download_queue_storage, queue_running
+    
+    while queue_running and download_queue_storage:
+        try:
+            # Verificar límite de descargas concurrentes
+            active_downloads = sum(1 for d in multi_progress.values() if d['status'] == 'downloading')
+            
+            if active_downloads >= MAX_CONCURRENT_DOWNLOADS:
+                time.sleep(5)  # Esperar 5 segundos antes de verificar de nuevo
+                continue
+            
+            # Buscar el siguiente elemento pendiente
+            next_item = None
+            for item in download_queue_storage:
+                if item['status'] == 'pending':
+                    next_item = item
+                    break
+            
+            if not next_item:
+                time.sleep(2)  # No hay elementos pendientes
+                continue
+            
+            # Marcar como procesando
+            next_item['status'] = 'processing'
+            save_download_state()
+            
+            # Simular llamada POST para iniciar descarga
+            params = {
+                'm3u8_url': next_item['url'],
+                'output_name': next_item['name'],
+                'quality': next_item.get('quality', DEFAULT_QUALITY)
+            }
+            
+            with app.test_request_context('/descargar', method='POST', data=params):
+                try:
+                    result = descargar()
+                    # Verificar si la respuesta indica éxito (código 202)
+                    success = False
+                    if isinstance(result, tuple) and len(result) == 2:
+                        response, status_code = result
+                        success = (status_code == 202)
+                    
+                    if success:
+                        # Descarga iniciada correctamente
+                        next_item['status'] = 'started'
+                        # Remover de la cola
+                        download_queue_storage = [item for item in download_queue_storage if item['id'] != next_item['id']]
+                    else:
+                        # Error al iniciar descarga
+                        next_item['status'] = 'error'
+                        next_item['error'] = 'Error al iniciar descarga'
+                        
+                except Exception as e:
+                    next_item['status'] = 'error'
+                    next_item['error'] = str(e)
+                
+            save_download_state()
+            time.sleep(1)  # Pausa breve antes del siguiente elemento
+            
+        except Exception as e:
+            print(f"Error procesando cola: {e}")
+            time.sleep(5)
+    
+    queue_running = False
+    save_download_state()
+
+@app.route('/api/active_downloads', methods=['GET'])
+def get_active_downloads():
+    """Obtiene todas las descargas activas para cargar al refrescar"""
+    try:
+        return jsonify({
+            'success': True,
+            'downloads': multi_progress
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
     """Endpoint para obtener datos analíticos"""
     try:
         static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
