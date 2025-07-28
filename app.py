@@ -138,10 +138,10 @@ default_html = '''
             </div>
             <div class="d-flex flex-column">
               {% if item.url %}
-              <button class="btn btn-outline-info btn-sm mb-1" onclick="copiarUrl('{{item.url|e}}')" title="Copiar URL al portapapeles">
+              <button class="btn btn-outline-info btn-sm mb-1" data-url="{{item.url|e}}" onclick="copiarUrlFromData(this)" title="Copiar URL al portapapeles">
                 📋
               </button>
-              <button class="btn btn-outline-success btn-sm mb-1" onclick="reproducirUrl('{{item.url|e}}')" title="Reproducir video">
+              <button class="btn btn-outline-success btn-sm mb-1" data-url="{{item.url|e}}" onclick="reproducirUrlFromData(this)" title="Reproducir video">
                 ▶️
               </button>
               {% endif %}
@@ -245,7 +245,6 @@ function mostrarDescargaActiva(download_id, url) {
         </div>
         <div class='mt-2 url-display small' id="url-${download_id}">
             <strong>🔗 URL:</strong> <span class="text-break">${url || 'N/A'}</span>
-            ${url ? '<button class="btn btn-outline-info btn-sm ms-2" onclick="copiarUrl(\'' + encodeURIComponent(url) + '\')" title="Copiar URL">📋</button>' : ''}
         </div>
         <div>Progreso: <span id='progreso-${download_id}'>0%</span></div>
         <div class='progress mb-2'>
@@ -256,6 +255,18 @@ function mostrarDescargaActiva(download_id, url) {
         </div>`;
     
     div.appendChild(barra);
+    
+    // Agregar botón de copiar URL si existe
+    if (url) {
+        let urlDiv = document.getElementById(`url-${download_id}`);
+        let copyBtn = document.createElement('button');
+        copyBtn.className = 'btn btn-outline-info btn-sm ms-2';
+        copyBtn.innerHTML = '📋';
+        copyBtn.title = 'Copiar URL';
+        copyBtn.onclick = function() { copiarUrl(url); };
+        urlDiv.appendChild(copyBtn);
+    }
+    
     actualizarProgreso(download_id);
 }
 function actualizarProgreso(download_id) {
@@ -476,6 +487,34 @@ function copiarUrl(url) {
         copiarUrlFallback(urlToCopy);
     }
 }
+function copiarUrlFromData(button) {
+    // Obtener URL del atributo data
+    let url = button.getAttribute('data-url');
+    if (!url) {
+        alert('No se encontró la URL para copiar.');
+        return;
+    }
+    
+    if (navigator.clipboard && window.isSecureContext) {
+        // Usar la API moderna del portapapeles
+        navigator.clipboard.writeText(url).then(function() {
+            // Mostrar confirmación temporal
+            let originalText = button.innerHTML;
+            button.innerHTML = '✅';
+            button.disabled = true;
+            setTimeout(function() {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }, 1500);
+        }).catch(function(err) {
+            // Fallback si falla la API moderna
+            copiarUrlFallback(url);
+        });
+    } else {
+        // Fallback para navegadores más antiguos
+        copiarUrlFallback(url);
+    }
+}
 function reproducirUrl(url) {
     // Decodificar la URL y ponerla en el campo de entrada
     let urlToPlay = decodeURIComponent(url);
@@ -486,6 +525,29 @@ function reproducirUrl(url) {
     
     // Mostrar confirmación visual en el botón
     let button = event.target;
+    let originalText = button.innerHTML;
+    button.innerHTML = '🎬';
+    button.disabled = true;
+    setTimeout(function() {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }, 2000);
+}
+function reproducirUrlFromData(button) {
+    // Obtener URL del atributo data
+    let url = button.getAttribute('data-url');
+    if (!url) {
+        alert('No se encontró la URL para reproducir.');
+        return;
+    }
+    
+    // Poner la URL en el campo de entrada
+    document.getElementById('m3u8-url').value = url;
+    
+    // Reproducir automáticamente
+    playM3U8();
+    
+    // Mostrar confirmación visual en el botón
     let originalText = button.innerHTML;
     button.innerHTML = '🎬';
     button.disabled = true;
