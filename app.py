@@ -964,6 +964,9 @@ default_html = '''
             <button type="button" class="btn btn-info d-flex align-items-center gap-2" onclick="playM3U8()">
               <span>▶️</span> Vista Previa
             </button>
+            <button type="button" class="btn btn-secondary d-flex align-items-center gap-2" onclick="extractMetadata()">
+              <span>🔍</span> Analizar M3U8
+            </button>
             <button type="submit" class="btn btn-success d-flex align-items-center gap-2">
               <span>⬇️</span> Descargar MP4
             </button>
@@ -973,6 +976,13 @@ default_html = '''
           </div>
         </form>
       </div>
+      
+      <!-- Área de metadatos M3U8 -->
+      <div id="metadata-container" class="form-container" style="display: none;">
+        <h5 class="fw-semibold mb-3">📋 Información del Video M3U8</h5>
+        <div id="metadata-content"></div>
+      </div>
+      
       <div id="video-container"></div>
       <div id="progreso" class="mt-4"></div>
       <div class="credit">
@@ -1369,8 +1379,181 @@ function loadActiveDownloads() {
         });
 }
 
-// Funciones originales (mantenidas)
-function playM3U8() {
+// Función para extraer y mostrar metadatos M3U8
+function extractMetadata() {
+    const url = document.getElementById('m3u8-url').value.trim();
+    if (!url) {
+        showNotification('Introduce una URL M3U8 válida', 'warning');
+        return;
+    }
+    
+    // Mostrar indicador de carga
+    const metadataContainer = document.getElementById('metadata-container');
+    const metadataContent = document.getElementById('metadata-content');
+    
+    metadataContainer.style.display = 'block';
+    metadataContent.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Analizando...</span>
+            </div>
+            <p class="mt-2">Analizando archivo M3U8...</p>
+        </div>
+    `;
+    
+    fetch('/api/metadata', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            displayMetadata(data.metadata, data.suggested_filename);
+            
+            // Auto-rellenar nombre si está vacío
+            const nameInput = document.getElementById('output-name');
+            if (!nameInput.value && data.suggested_filename) {
+                nameInput.value = data.suggested_filename;
+                showNotification('Nombre sugerido aplicado automáticamente', 'info');
+            }
+        } else {
+            metadataContent.innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> ${data.error}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        metadataContent.innerHTML = `
+            <div class="alert alert-danger">
+                <strong>Error:</strong> ${error.message}
+            </div>
+        `;
+    });
+}
+
+function displayMetadata(metadata, suggestedName) {
+    const metadataContent = document.getElementById('metadata-content');
+    
+    let html = `
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">📝 Nombre Sugerido:</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="suggested-name" value="${suggestedName || 'No detectado'}" readonly>
+                        <button class="btn btn-outline-primary" onclick="applySuggestedName()" title="Aplicar nombre sugerido">
+                            ✅ Usar
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">📐 Resolución:</label>
+                    <input type="text" class="form-control" value="${metadata.resolution || 'No detectada'}" readonly>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-4">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">🎭 Calidad:</label>
+                    <input type="text" class="form-control" value="${metadata.quality || 'Auto'}" readonly>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">📊 Bitrate:</label>
+                    <input type="text" class="form-control" value="${metadata.bitrate || 'No detectado'}" readonly>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">⏱️ Duración Seg.:</label>
+                    <input type="text" class="form-control" value="${metadata.duration ? metadata.duration + 's' : 'No detectada'}" readonly>
+                </div>
+            </div>
+        </div>`;
+    
+    if (metadata.title) {
+        html += `
+            <div class="mb-3">
+                <label class="form-label fw-semibold">🎬 Título Detectado:</label>
+                <input type="text" class="form-control" value="${metadata.title}" readonly>
+            </div>`;
+    }
+    
+    if (metadata.video_info) {
+        const info = metadata.video_info;
+        html += `
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">🌐 Dominio:</label>
+                        <input type="text" class="form-control" value="${info.source_domain || 'Desconocido'}" readonly>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">📦 Segmentos Estimados:</label>
+                        <input type="text" class="form-control" value="${info.estimated_segments || 'No calculado'}" readonly>
+                    </div>
+                </div>
+            </div>`;
+        
+        if (info.is_live) {
+            html += `
+                <div class="alert alert-warning">
+                    <strong>⚠️ Transmisión en Vivo:</strong> Este parece ser un stream en vivo. La descarga podría no funcionar correctamente.
+                </div>`;
+        }
+    }
+    
+    html += `
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-outline-secondary btn-sm" onclick="hideMetadata()">
+                ❌ Ocultar
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="downloadWithMetadata()">
+                ⬇️ Descargar con esta Información
+            </button>
+        </div>
+    `;
+    
+    metadataContent.innerHTML = html;
+}
+
+function applySuggestedName() {
+    const suggestedName = document.getElementById('suggested-name').value;
+    if (suggestedName && suggestedName !== 'No detectado') {
+        document.getElementById('output-name').value = suggestedName;
+        showNotification('Nombre aplicado al formulario', 'success');
+    }
+}
+
+function hideMetadata() {
+    document.getElementById('metadata-container').style.display = 'none';
+}
+
+function downloadWithMetadata() {
+    // Aplicar nombre sugerido si no hay uno
+    const nameInput = document.getElementById('output-name');
+    const suggestedInput = document.getElementById('suggested-name');
+    
+    if (!nameInput.value && suggestedInput && suggestedInput.value !== 'No detectado') {
+        nameInput.value = suggestedInput.value;
+    }
+    
+    // Ocultar metadatos y iniciar descarga
+    hideMetadata();
+    
+    // Simular envío del formulario
+    document.getElementById('descargar-form').dispatchEvent(new Event('submit'));
+}
     const url = document.getElementById('m3u8-url').value.trim();
     const container = document.getElementById('video-container');
     container.innerHTML = '';
@@ -1905,6 +2088,143 @@ def sanitize_filename(filename):
     """Limpia el nombre del archivo de caracteres no seguros"""
     return re.sub(r'[^\w\-. ]', '', filename).strip()
 
+def extract_m3u8_metadata(m3u8_url):
+    """Extrae metadatos útiles del archivo M3U8 para nombrar automáticamente"""
+    import requests
+    import re
+    from urllib.parse import urlparse, unquote
+    
+    metadata = {
+        'suggested_name': '',
+        'resolution': '',
+        'duration': 0,
+        'title': '',
+        'quality': '',
+        'bitrate': '',
+        'video_info': {}
+    }
+    
+    try:
+        # 1. Extraer información de la URL
+        parsed_url = urlparse(m3u8_url)
+        url_path = unquote(parsed_url.path)
+        
+        # Buscar nombre en la URL
+        url_filename = url_path.split('/')[-1].replace('.m3u8', '')
+        if url_filename and url_filename != 'index' and url_filename != 'playlist':
+            metadata['suggested_name'] = sanitize_filename(url_filename)
+        
+        # 2. Descargar y analizar el contenido M3U8
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(m3u8_url, headers=headers, timeout=10)
+        response.raise_for_status()
+        content = response.text
+        
+        # 3. Extraer información del contenido M3U8
+        lines = content.strip().split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Extraer resolución
+            if 'RESOLUTION=' in line:
+                resolution_match = re.search(r'RESOLUTION=(\d+x\d+)', line)
+                if resolution_match:
+                    resolution = resolution_match.group(1)
+                    metadata['resolution'] = resolution
+                    # Determinar calidad basada en resolución
+                    height = int(resolution.split('x')[1])
+                    if height >= 1080:
+                        metadata['quality'] = '1080p'
+                    elif height >= 720:
+                        metadata['quality'] = '720p'
+                    elif height >= 480:
+                        metadata['quality'] = '480p'
+                    else:
+                        metadata['quality'] = f'{height}p'
+            
+            # Extraer bitrate
+            if 'BANDWIDTH=' in line:
+                bitrate_match = re.search(r'BANDWIDTH=(\d+)', line)
+                if bitrate_match:
+                    bitrate = int(bitrate_match.group(1))
+                    metadata['bitrate'] = f"{bitrate // 1000}kbps"
+            
+            # Extraer título de segmentos
+            if line.startswith('#EXTINF:') and ',' in line:
+                title_part = line.split(',', 1)[1].strip()
+                if title_part and title_part not in ['', 'no desc']:
+                    metadata['title'] = sanitize_filename(title_part)
+            
+            # Extraer duración total aproximada
+            if line.startswith('#EXT-X-TARGETDURATION:'):
+                duration_match = re.search(r'#EXT-X-TARGETDURATION:(\d+)', line)
+                if duration_match:
+                    metadata['duration'] = int(duration_match.group(1))
+        
+        # 4. Generar nombre sugerido inteligente
+        name_parts = []
+        
+        # Usar título si existe
+        if metadata['title']:
+            name_parts.append(metadata['title'])
+        elif metadata['suggested_name']:
+            name_parts.append(metadata['suggested_name'])
+        else:
+            # Generar nombre basado en la URL
+            domain = parsed_url.netloc
+            if domain:
+                clean_domain = domain.replace('www.', '').split('.')[0]
+                name_parts.append(clean_domain)
+        
+        # Añadir calidad si se detectó
+        if metadata['quality']:
+            name_parts.append(metadata['quality'])
+        
+        # Generar nombre final
+        if name_parts:
+            suggested_name = '_'.join(name_parts)
+            # Limpiar y limitar longitud
+            suggested_name = re.sub(r'[^\w\-_\.]', '_', suggested_name)
+            suggested_name = re.sub(r'_+', '_', suggested_name)  # Eliminar múltiples guiones bajos
+            metadata['suggested_name'] = suggested_name[:50]  # Limitar a 50 caracteres
+        
+        # 5. Información adicional
+        metadata['video_info'] = {
+            'source_domain': parsed_url.netloc,
+            'estimated_segments': content.count('#EXTINF:'),
+            'is_live': '#EXT-X-ENDLIST' not in content,
+            'version': '3' if '#EXT-X-VERSION:3' in content else 'unknown'
+        }
+        
+    except requests.RequestException as e:
+        print(f"Error descargando M3U8 para metadatos: {e}")
+        # Fallback: usar solo la URL
+        try:
+            parsed_url = urlparse(m3u8_url)
+            url_filename = parsed_url.path.split('/')[-1].replace('.m3u8', '')
+            if url_filename:
+                metadata['suggested_name'] = sanitize_filename(url_filename)
+        except:
+            pass
+    except Exception as e:
+        print(f"Error procesando metadatos M3U8: {e}")
+    
+    return metadata
+
+def suggest_filename_from_m3u8(m3u8_url):
+    """Función simplificada para obtener nombre sugerido"""
+    metadata = extract_m3u8_metadata(m3u8_url)
+    
+    if metadata['suggested_name']:
+        return metadata['suggested_name']
+    
+    # Fallback: generar nombre único
+    return f'video_{uuid.uuid4().hex[:8]}'
+
 def cleanup_old_downloads():
     """Limpia descargas antiguas del diccionario de progreso"""
     current_time = time.time()
@@ -2010,7 +2330,16 @@ def descargar():
                 output_name += '.mp4'
             output_file = output_name
         else:
-            output_file = f'video_{uuid.uuid4().hex[:8]}.mp4'
+            # Intentar extraer nombre inteligente del M3U8
+            try:
+                suggested_name = suggest_filename_from_m3u8(m3u8_url)
+                if suggested_name and suggested_name != f'video_{uuid.uuid4().hex[:8]}':
+                    output_file = f'{suggested_name}.mp4'
+                else:
+                    output_file = f'video_{uuid.uuid4().hex[:8]}.mp4'
+            except Exception as e:
+                print(f"Error extrayendo nombre de M3U8: {e}")
+                output_file = f'video_{uuid.uuid4().hex[:8]}.mp4'
         
         # Verificar si el archivo ya existe
         static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
@@ -2021,8 +2350,10 @@ def descargar():
                 counter += 1
             output_file = f"{base_name}_{counter}.mp4"
         
+        # Crear nuevo download_id
+        download_id = uuid.uuid4().hex[:8]
+        
         # Crear ID único para la descarga
-        download_id = str(uuid.uuid4())
         multi_progress[download_id] = {
             'total': 0,
             'current': 0,
@@ -2570,8 +2901,29 @@ def process_download_queue():
     queue_running = False
     save_download_state()
 
-@app.route('/api/active_downloads', methods=['GET'])
-def get_active_downloads():
+@app.route('/api/metadata', methods=['POST'])
+def get_m3u8_metadata():
+    """Obtiene metadatos de una URL M3U8 para sugerir nombre y mostrar información"""
+    try:
+        data = request.get_json()
+        m3u8_url = data.get('url', '').strip()
+        
+        if not m3u8_url:
+            return jsonify({'success': False, 'error': 'URL no proporcionada'}), 400
+        
+        if not is_valid_m3u8_url(m3u8_url):
+            return jsonify({'success': False, 'error': 'URL M3U8 no válida'}), 400
+        
+        metadata = extract_m3u8_metadata(m3u8_url)
+        
+        return jsonify({
+            'success': True,
+            'metadata': metadata,
+            'suggested_filename': metadata['suggested_name'] or suggest_filename_from_m3u8(m3u8_url)
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
     """Obtiene todas las descargas activas para cargar al refrescar"""
     try:
         return jsonify({
