@@ -1,25 +1,24 @@
 import threading
-from flask import jsonify, session
-# Variable global para el progreso
-download_progress = {
-    'total': 0,
-    'current': 0,
-    'status': 'idle',
-    'error': '',
-    'porcentaje': 0
-}
-from flask import Flask, render_template_string, request, send_file, session, url_for
+import uuid
+import re
 import os
-from test import M3U8Downloader
 import glob
+import time
+from flask import Flask, render_template_string, request, send_file, jsonify
+from test import M3U8Downloader
 
+# Configuración de la aplicación
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'  # Cambia esto por una clave segura en producción
 
-# Diccionario para progreso de descargas múltiples
+# Variables globales para el control de descargas
 multi_progress = {}
-# Diccionario para controlar cancelaciones
 cancelled_downloads = set()
+
+# Configuración
+MAX_CONCURRENT_DOWNLOADS = 5
+STATIC_DIR = 'static'
+TEMP_DIR = 'temp_segments'
 
 default_html = '''
 <!DOCTYPE html>
@@ -65,6 +64,22 @@ default_html = '''
         .sidebar li:hover {
             background: rgba(255,255,255,0.1);
         }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+        .status-downloading { background-color: #007bff; }
+        .status-done { background-color: #28a745; }
+        .status-error { background-color: #dc3545; }
+        .status-cancelled { background-color: #ffc107; }
+        .download-stats {
+            font-size: 0.8rem;
+            color: #ccc;
+            margin-top: 0.25rem;
+        }
     </style>
 </head>
 <body>
@@ -72,11 +87,25 @@ default_html = '''
   <div class="row">
     <nav class="col-md-3 sidebar">
       <h3>Historial de descargas</h3>
+      {% if stats and stats.total > 0 %}
+        <div class="download-stats">
+          <small>
+            📊 Activas: <span class="status-downloading">●</span> {{stats.downloading}} | 
+            ✅ {{stats.completed}} | ❌ {{stats.errors}} | 🚫 {{stats.cancelled}}
+          </small>
+        </div>
+        <hr style="margin: 0.5rem 0;">
+      {% endif %}
       {% if historial and historial|length > 0 %}
         <ul>
         {% for item in historial %}
           <li class="d-flex justify-content-between align-items-center mb-2">
-            <a href="/static/{{item.archivo}}" download class="text-truncate me-2">{{item.archivo}}</a>
+            <div class="flex-grow-1 me-2">
+              <a href="/static/{{item.archivo}}" download class="text-truncate d-block">{{item.archivo}}</a>
+              <div class="download-stats">
+                📦 {{item.tamaño}} • 📅 {{item.fecha}}
+              </div>
+            </div>
             <button class="btn btn-outline-danger btn-sm" onclick="eliminarArchivo('{{item.archivo}}')" title="Eliminar archivo">
               🗑️
             </button>
@@ -164,7 +193,21 @@ function mostrarDescargaActiva(download_id) {
     let barra = document.createElement('div');
     barra.id = 'descarga-' + download_id;
     barra.className = 'descarga-item';
-    barra.innerHTML = `<div><strong id='archivo-${download_id}'>Preparando descarga...</strong></div><div>Progreso: <span id='progreso-${download_id}'>0%</span></div><div class='progress mb-2'><div class='progress-bar' id='bar-${download_id}' role='progressbar' style='width:0%'></div></div><div><button class='btn btn-danger btn-sm' id='cancel-btn-${download_id}' onclick='cancelarDescarga("${download_id}")'>Cancelar</button></div>`;
+    barra.innerHTML = `
+        <div>
+            <span class="status-indicator status-downloading"></span>
+            <strong id='archivo-${download_id}'>Preparando descarga...</strong>
+        </div>
+        <div class="download-stats" id="stats-${download_id}">
+            Inicializando...
+        </div>
+        <div>Progreso: <span id='progreso-${download_id}'>0%</span></div>
+        <div class='progress mb-2'>
+            <div class='progress-bar' id='bar-${download_id}' role='progressbar' style='width:0%'></div>
+        </div>
+        <div>
+            <button class='btn btn-danger btn-sm' id='cancel-btn-${download_id}' onclick='cancelarDescarga("${download_id}")'>Cancelar</button>
+        </div>`;
     div.appendChild(barra);
     actualizarProgreso(download_id);
 }
@@ -243,30 +286,94 @@ function eliminarArchivo(filename) {
 @app.route('/', methods=['GET'])
 def index():
     url = request.args.get('url', '')
-    # Historial: todos los archivos MP4 en static
-    static_dir = os.path.join(os.path.dirname(__file__), 'static')
+    # Historial: todos los archivos MP4 en static con información adicional
+    static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
     archivos = []
     if os.path.exists(static_dir):
         for f in glob.glob(os.path.join(static_dir, '*.mp4')):
-            archivos.append({'archivo': os.path.basename(f)})
-    return render_template_string(default_html, url=url, historial=archivos)
+            archivo_info = {
+                'archivo': os.path.basename(f),
+                'tamaño': format_file_size(os.path.getsize(f)),
+                'fecha': format_modification_time(os.path.getmtime(f))
+            }
+            archivos.append(archivo_info)
+        # Ordenar por fecha de modificación (más reciente primero)
+        archivos.sort(key=lambda x: os.path.getmtime(os.path.join(static_dir, x['archivo'])), reverse=True)
+    
+    # Estadísticas de descargas activas
+    stats = get_download_stats()
+    
+    return render_template_string(default_html, url=url, historial=archivos, stats=stats)
+
+def format_file_size(size_bytes):
+    """Convierte bytes a formato legible"""
+    if size_bytes == 0:
+        return "0 B"
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} TB"
+
+def format_modification_time(timestamp):
+    """Convierte timestamp a formato legible"""
+    import datetime
+    dt = datetime.datetime.fromtimestamp(timestamp)
+    return dt.strftime('%d/%m/%Y %H:%M')
+
+def get_download_stats():
+    """Obtiene estadísticas de descargas activas"""
+    downloading = sum(1 for d in multi_progress.values() if d['status'] == 'downloading')
+    completed = sum(1 for d in multi_progress.values() if d['status'] == 'done')
+    errors = sum(1 for d in multi_progress.values() if d['status'] == 'error')
+    cancelled = sum(1 for d in multi_progress.values() if d['status'] == 'cancelled')
+    
+    return {
+        'downloading': downloading,
+        'completed': completed,
+        'errors': errors,
+        'cancelled': cancelled,
+        'total': len(multi_progress)
+    }
 
 @app.route('/descargar', methods=['POST'])
 def descargar():
-    m3u8_url = request.form.get('m3u8_url')
+    # Verificar límite de descargas concurrentes
+    active_downloads = sum(1 for d in multi_progress.values() if d['status'] == 'downloading')
+    if active_downloads >= MAX_CONCURRENT_DOWNLOADS:
+        return jsonify({
+            'error': f'Máximo {MAX_CONCURRENT_DOWNLOADS} descargas simultáneas permitidas. Espera a que termine alguna.'
+        }), 429
+    
+    m3u8_url = request.form.get('m3u8_url', '').strip()
     output_name = request.form.get('output_name', '').strip()
+    
+    # Validaciones de entrada
+    if not m3u8_url:
+        return jsonify({'error': 'URL M3U8 no proporcionada'}), 400
+    
+    if not is_valid_m3u8_url(m3u8_url):
+        return jsonify({'error': 'URL M3U8 no válida'}), 400
+    
+    # Procesar nombre del archivo
     if output_name:
-        import re
-        output_name = re.sub(r'[^\w\-. ]', '', output_name)
+        output_name = sanitize_filename(output_name)
         if not output_name.lower().endswith('.mp4'):
             output_name += '.mp4'
         output_file = output_name
     else:
-        output_file = 'video_descargado.mp4'
-    if not m3u8_url:
-        return 'URL M3U8 no proporcionada', 400
-    # ID único para la descarga
-    import uuid
+        output_file = f'video_{uuid.uuid4().hex[:8]}.mp4'
+    
+    # Verificar si el archivo ya existe
+    static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
+    if os.path.exists(os.path.join(static_dir, output_file)):
+        base_name = output_file[:-4]  # Sin .mp4
+        counter = 1
+        while os.path.exists(os.path.join(static_dir, f"{base_name}_{counter}.mp4")):
+            counter += 1
+        output_file = f"{base_name}_{counter}.mp4"
+    
+    # Crear ID único para la descarga
     download_id = str(uuid.uuid4())
     multi_progress[download_id] = {
         'total': 0,
@@ -274,8 +381,93 @@ def descargar():
         'status': 'downloading',
         'error': '',
         'porcentaje': 0,
-        'output_file': output_file
+        'output_file': output_file,
+        'url': m3u8_url,
+        'start_time': time.time()
     }
+    
+    def run_download():
+        try:
+            # Verificar si ya fue cancelado antes de empezar
+            if download_id in cancelled_downloads:
+                multi_progress[download_id]['status'] = 'cancelled'
+                return
+                
+            # Usar el directorio temp_segments común
+            temp_dir = os.path.join(os.path.dirname(__file__), TEMP_DIR)
+            if not os.path.exists(temp_dir):
+                os.makedirs(temp_dir)
+            original_dir = os.getcwd()
+            
+            # Descarga de segmentos
+            downloader = M3U8Downloader(m3u8_url=m3u8_url, output_filename=output_file, max_workers=20)
+            segment_urls = downloader._get_segment_urls()
+            multi_progress[download_id]['total'] = len(segment_urls)
+            
+            for i, url in enumerate(segment_urls):
+                # Verificar cancelación en cada iteración
+                if download_id in cancelled_downloads:
+                    multi_progress[download_id]['status'] = 'cancelled'
+                    multi_progress[download_id]['error'] = 'Descarga cancelada por el usuario'
+                    return
+                    
+                try:
+                    downloader._download_segment(url, i)
+                    seg_path = os.path.join(temp_dir, f'segment_{i:05d}.ts')
+                    if not os.path.exists(seg_path):
+                        raise FileNotFoundError(f"No se encontró el archivo {seg_path} tras la descarga.")
+                except Exception as err:
+                    multi_progress[download_id]['error'] = f"Error al descargar el segmento {i+1}: {err}"
+                    multi_progress[download_id]['status'] = 'error'
+                    break
+                    
+                porcentaje = int(((i + 1) / len(segment_urls)) * 100) if len(segment_urls) > 0 else 0
+                multi_progress[download_id]['current'] = i + 1
+                multi_progress[download_id]['porcentaje'] = porcentaje
+                
+            # Verificar cancelación antes de la fusión
+            if download_id in cancelled_downloads:
+                multi_progress[download_id]['status'] = 'cancelled'
+                multi_progress[download_id]['error'] = 'Descarga cancelada por el usuario'
+                return
+                
+            # Fusión y movimiento del archivo MP4
+            if multi_progress[download_id]['status'] == 'downloading':
+                segment_files = [f'segment_{i:05d}.ts' for i in range(len(segment_urls))]
+                downloader._merge_segments(segment_files)
+                static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
+                if not os.path.exists(static_dir):
+                    os.makedirs(static_dir)
+                static_path = os.path.join(static_dir, output_file)
+                output_path = os.path.abspath(os.path.join(original_dir, output_file))
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    os.replace(output_path, static_path)
+                    multi_progress[download_id]['status'] = 'done'
+                    multi_progress[download_id]['end_time'] = time.time()
+                else:
+                    multi_progress[download_id]['status'] = 'error'
+                    multi_progress[download_id]['error'] = 'No se pudo descargar el video o el archivo está vacío.'
+                    
+        except Exception as e:
+            multi_progress[download_id]['status'] = 'error'
+            multi_progress[download_id]['error'] = str(e)
+        finally:
+            # Limpiar el ID de cancelación cuando termine la descarga
+            cancelled_downloads.discard(download_id)
+    
+    thread = threading.Thread(target=run_download)
+    thread.start()
+    return jsonify({'download_id': download_id}), 202
+
+def is_valid_m3u8_url(url):
+    """Valida si la URL es un formato M3U8 válido"""
+    import re
+    pattern = r'^https?://.+\.m3u8(\?.*)?$'
+    return re.match(pattern, url) is not None
+
+def sanitize_filename(filename):
+    """Limpia el nombre del archivo de caracteres no seguros"""
+    return re.sub(r'[^\w\-. ]', '', filename).strip()
     def run_download():
         try:
             # Verificar si ya fue cancelado antes de empezar
