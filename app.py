@@ -27,6 +27,7 @@ default_html = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Descargador M3U8 Mejorado</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📺</text></svg>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: #fff; }
@@ -962,6 +963,12 @@ def eliminar_descarga_activa(download_id):
 def serve_static(filename):
     static_dir = os.path.join(os.path.dirname(__file__), 'static')
     return send_file(os.path.join(static_dir, filename))
+
+@app.route('/favicon.ico')
+def favicon():
+    # Devolver un favicon básico o un 204 No Content
+    from flask import Response
+    return Response(status=204)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
