@@ -433,6 +433,256 @@ default_html = '''
             transition: var(--transition);
         }
 
+        /* Dashboard y estadísticas */
+        .dashboard-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: var(--transition);
+        }
+
+        .dashboard-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--box-shadow-lg);
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: rgba(255, 255, 255, 0.7);
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .chart-container {
+            height: 200px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Sistema de búsqueda y filtros */
+        .search-container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .search-input {
+            background: rgba(255, 255, 255, 0.9) !important;
+            border: 2px solid transparent !important;
+            border-radius: var(--border-radius-sm) !important;
+            padding: 0.75rem 1rem !important;
+            font-size: 1rem !important;
+            transition: var(--transition) !important;
+            color: var(--dark-color) !important;
+        }
+
+        .search-input:focus {
+            background: rgba(255, 255, 255, 1) !important;
+            border-color: var(--primary-color) !important;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+        }
+
+        .filter-chip {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            display: inline-block;
+            margin: 0.25rem;
+        }
+
+        .filter-chip:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .filter-chip.active {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        /* Configuraciones */
+        .config-section {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .config-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 25px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 25px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .toggle-switch.active {
+            background: var(--success-color);
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 21px;
+            height: 21px;
+            background: #fff;
+            border-radius: 50%;
+            transition: var(--transition);
+        }
+
+        .toggle-switch.active::after {
+            transform: translateX(25px);
+        }
+
+        /* Organización por carpetas */
+        .folder-tree {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--border-radius);
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .folder-item {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem;
+            border-radius: var(--border-radius-sm);
+            transition: var(--transition);
+            cursor: pointer;
+        }
+
+        .folder-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .folder-icon {
+            margin-right: 0.75rem;
+            font-size: 1.2rem;
+        }
+
+        /* Cola de descargas */
+        .queue-container {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .queue-item {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--border-radius-sm);
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: between;
+            transition: var(--transition);
+        }
+
+        .queue-item:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .queue-number {
+            background: var(--primary-color);
+            color: #fff;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-right: 1rem;
+        }
+
+        /* Tabs navigation */
+        .nav-tabs-custom {
+            border: none;
+            margin-bottom: 2rem;
+        }
+
+        .nav-tabs-custom .nav-link {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: rgba(255, 255, 255, 0.7);
+            margin-right: 0.5rem;
+            border-radius: var(--border-radius-sm);
+            padding: 0.75rem 1.5rem;
+            transition: var(--transition);
+        }
+
+        .nav-tabs-custom .nav-link:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+        }
+
+        .nav-tabs-custom .nav-link.active {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            color: #fff;
+        }
+
+        /* Responsive improvements */
+        @media (max-width: 768px) {
+            .dashboard-card {
+                padding: 1rem;
+            }
+            
+            .stat-number {
+                font-size: 2rem;
+            }
+            
+            .search-container {
+                padding: 1rem;
+            }
+            
+            .filter-chip {
+                margin: 0.25rem 0.125rem;
+                padding: 0.4rem 0.8rem;
+                font-size: 0.8rem;
+            }
+        }
+
         /* Scrollbar personalizada */
         ::-webkit-scrollbar {
             width: 8px;
@@ -457,53 +707,194 @@ default_html = '''
 <div class="container-fluid">
   <div class="row">
     <nav class="col-md-3 sidebar">
-      <h3>Historial de descargas</h3>
-      {% if stats and stats.total > 0 %}
-        <div class="download-stats">
-          <small>
-            📊 Activas: <span class="status-downloading">●</span> {{stats.downloading}} | 
-            ✅ {{stats.completed}} | ❌ {{stats.errors}} | 🚫 {{stats.cancelled}}
-          </small>
+      <!-- Navegación por pestañas -->
+      <ul class="nav nav-tabs nav-tabs-custom mb-3" id="sidebarTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="historial-tab" data-bs-toggle="tab" data-bs-target="#historial-pane" type="button" role="tab">
+            📚 Historial
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="activas-tab" data-bs-toggle="tab" data-bs-target="#activas-pane" type="button" role="tab">
+            ⬇️ Activas
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard-pane" type="button" role="tab">
+            📊 Stats
+          </button>
+        </li>
+      </ul>
+
+      <div class="tab-content" id="sidebarTabContent">
+        <!-- Pestaña de Historial -->
+        <div class="tab-pane fade show active" id="historial-pane" role="tabpanel">
+          <h3>Historial de descargas</h3>
+          
+          <!-- Sistema de búsqueda y filtros -->
+          <div class="search-container">
+            <div class="mb-3">
+              <input type="text" id="search-input" class="form-control search-input" placeholder="🔍 Buscar videos...">
+            </div>
+            <div class="mb-2">
+              <small class="text-light opacity-75">Filtrar por:</small>
+            </div>
+            <div>
+              <span class="filter-chip active" data-filter="all">Todos</span>
+              <span class="filter-chip" data-filter="today">Hoy</span>
+              <span class="filter-chip" data-filter="week">Esta semana</span>
+              <span class="filter-chip" data-filter="large">Archivos grandes</span>
+            </div>
+          </div>
+
+          {% if stats and stats.total > 0 %}
+            <div class="download-stats">
+              <small>
+                📊 Activas: <span class="status-downloading">●</span> {{stats.downloading}} | 
+                ✅ {{stats.completed}} | ❌ {{stats.errors}} | 🚫 {{stats.cancelled}}
+              </small>
+            </div>
+            <hr style="margin: 0.5rem 0;">
+          {% endif %}
+          
+          <div id="historial-container">
+            {% if historial and historial|length > 0 %}
+              <ul id="historial-list">
+              {% for item in historial %}
+                <li class="d-flex justify-content-between align-items-center mb-2 historial-item" 
+                    data-filename="{{item.archivo|lower}}" 
+                    data-date="{{item.fecha_timestamp or 0}}"
+                    data-size="{{item.tamaño_bytes or 0}}">
+                  <div class="flex-grow-1 me-2">
+                    <a href="/static/{{item.archivo}}" download class="text-truncate d-block">{{item.archivo}}</a>
+                    <div class="download-stats">
+                      📦 {{item.tamaño}} • 📅 {{item.fecha}}
+                      {% if item.url %}
+                      <br><small class="url-metadata">
+                        🔗 <span class="text-break" style="font-size: 0.75em;">{{item.url}}</span>
+                      </small>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="d-flex flex-column">
+                    {% if item.url %}
+                    <button class="btn btn-outline-info btn-sm mb-1" data-url="{{item.url|e}}" onclick="copiarUrlFromData(this)" title="Copiar URL al portapapeles">
+                      📋
+                    </button>
+                    <button class="btn btn-outline-success btn-sm mb-1" data-url="{{item.url|e}}" onclick="reproducirUrlFromData(this)" title="Reproducir video">
+                      ▶️
+                    </button>
+                    {% endif %}
+                    <button class="btn btn-outline-danger btn-sm" onclick="eliminarArchivo('{{item.archivo}}')" title="Eliminar archivo">
+                      🗑️
+                    </button>
+                  </div>
+                </li>
+              {% endfor %}
+              </ul>
+            {% else %}
+              <span style="color:#ccc">No hay descargas aún.</span>
+            {% endif %}
+          </div>
         </div>
-        <hr style="margin: 0.5rem 0;">
-      {% endif %}
-      {% if historial and historial|length > 0 %}
-        <ul>
-        {% for item in historial %}
-          <li class="d-flex justify-content-between align-items-center mb-2">
-            <div class="flex-grow-1 me-2">
-              <a href="/static/{{item.archivo}}" download class="text-truncate d-block">{{item.archivo}}</a>
-              <div class="download-stats">
-                📦 {{item.tamaño}} • 📅 {{item.fecha}}
-                {% if item.url %}
-                <br><small class="url-metadata">
-                  🔗 <span class="text-break" style="font-size: 0.75em;">{{item.url}}</span>
-                </small>
-                {% endif %}
+
+        <!-- Pestaña de Descargas Activas -->
+        <div class="tab-pane fade" id="activas-pane" role="tabpanel">
+          <h3>Descargas activas</h3>
+          
+          <!-- Cola de descargas -->
+          <div class="queue-container">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="mb-0">Cola de descargas</h5>
+              <button class="btn btn-outline-light btn-sm" onclick="toggleQueue()">
+                <span id="queue-toggle-text">▶️ Iniciar</span>
+              </button>
+            </div>
+            <div id="download-queue" class="mb-3">
+              <!-- Las URLs en cola aparecerán aquí -->
+            </div>
+            <div class="d-flex gap-2">
+              <input type="text" id="queue-url-input" class="form-control form-control-sm" placeholder="URL M3U8 para añadir a la cola">
+              <button class="btn btn-primary btn-sm" onclick="addToQueue()">➕</button>
+            </div>
+          </div>
+          
+          <div id="descargas-activas"></div>
+        </div>
+
+        <!-- Pestaña de Dashboard -->
+        <div class="tab-pane fade" id="dashboard-pane" role="tabpanel">
+          <h3>Dashboard</h3>
+          
+          <!-- Estadísticas generales -->
+          <div class="row">
+            <div class="col-6">
+              <div class="dashboard-card text-center">
+                <div class="stat-number" id="total-downloads">{{historial|length or 0}}</div>
+                <div class="stat-label">Videos descargados</div>
               </div>
             </div>
-            <div class="d-flex flex-column">
-              {% if item.url %}
-              <button class="btn btn-outline-info btn-sm mb-1" data-url="{{item.url|e}}" onclick="copiarUrlFromData(this)" title="Copiar URL al portapapeles">
-                📋
-              </button>
-              <button class="btn btn-outline-success btn-sm mb-1" data-url="{{item.url|e}}" onclick="reproducirUrlFromData(this)" title="Reproducir video">
-                ▶️
-              </button>
-              {% endif %}
-              <button class="btn btn-outline-danger btn-sm" onclick="eliminarArchivo('{{item.archivo}}')" title="Eliminar archivo">
-                🗑️
-              </button>
+            <div class="col-6">
+              <div class="dashboard-card text-center">
+                <div class="stat-number" id="total-size">0 GB</div>
+                <div class="stat-label">Tamaño total</div>
+              </div>
             </div>
-          </li>
-        {% endfor %}
-        </ul>
-      {% else %}
-        <span style="color:#ccc">No hay descargas aún.</span>
-      {% endif %}
-      <hr>
-      <h3>Descargas activas</h3>
-      <div id="descargas-activas"></div>
+          </div>
+          
+          <div class="row">
+            <div class="col-6">
+              <div class="dashboard-card text-center">
+                <div class="stat-number" id="avg-speed">0</div>
+                <div class="stat-label">Velocidad promedio</div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="dashboard-card text-center">
+                <div class="stat-number" id="success-rate">100%</div>
+                <div class="stat-label">Tasa de éxito</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Configuraciones -->
+          <div class="config-section">
+            <div class="config-title">
+              ⚙️ Configuraciones
+            </div>
+            
+            <div class="row">
+              <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <span>Descargas automáticas</span>
+                  <div class="toggle-switch" id="auto-download-toggle" onclick="toggleConfig('autoDownload')"></div>
+                </div>
+                
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <span>Notificaciones</span>
+                  <div class="toggle-switch active" id="notifications-toggle" onclick="toggleConfig('notifications')"></div>
+                </div>
+                
+                <div class="mb-3">
+                  <label class="form-label">Máximo descargas simultáneas:</label>
+                  <input type="range" class="form-range" min="1" max="10" value="5" id="max-concurrent-range" onchange="updateMaxConcurrent(this.value)">
+                  <small class="text-light opacity-75">Actual: <span id="max-concurrent-value">5</span></small>
+                </div>
+                
+                <div class="mb-3">
+                  <label class="form-label">Calidad preferida:</label>
+                  <select class="form-control" id="quality-select" onchange="updateQuality(this.value)">
+                    <option value="auto">Automática</option>
+                    <option value="1080p">1080p</option>
+                    <option value="720p">720p</option>
+                    <option value="480p">480p</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </nav>
     <main class="col-md-9 main">
       <h1>Descargador M3U8 Profesional</h1>
@@ -526,6 +917,9 @@ default_html = '''
             <button type="submit" class="btn btn-success d-flex align-items-center gap-2">
               <span>⬇️</span> Descargar MP4
             </button>
+            <button type="button" class="btn btn-outline-light d-flex align-items-center gap-2" onclick="addToQueueFromForm()">
+              <span>➕</span> Añadir a Cola
+            </button>
           </div>
         </form>
       </div>
@@ -541,7 +935,7 @@ default_html = '''
             <a href="https://getbootstrap.com/" target="_blank">Bootstrap</a> • 
             <a href="https://ffmpeg.org/" target="_blank">FFmpeg</a>
           </div>
-          <div class="small opacity-75">Versión 1.0.0 - Interfaz moderna con principios UI/UX</div>
+          <div class="small opacity-75">Versión 2.0.0 - Sistema completo con búsqueda, cola y dashboard</div>
           <div class="fw-bold" style="color: #fbbf24; margin-top: 0.5rem;">
             👨‍💻 Creado por <span style="color: #fff;">Ingeniero Kevin Aráuz</span>
           </div>
@@ -553,6 +947,304 @@ default_html = '''
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script>
+// Variables globales para las nuevas funcionalidades
+let downloadQueue = [];
+let queueRunning = false;
+let userConfig = {
+    autoDownload: false,
+    notifications: true,
+    maxConcurrent: 5,
+    quality: 'auto'
+};
+
+// Cargar configuración del localStorage
+function loadUserConfig() {
+    const saved = localStorage.getItem('m3u8_downloader_config');
+    if (saved) {
+        userConfig = { ...userConfig, ...JSON.parse(saved) };
+        updateConfigUI();
+    }
+}
+
+// Guardar configuración en localStorage
+function saveUserConfig() {
+    localStorage.setItem('m3u8_downloader_config', JSON.stringify(userConfig));
+}
+
+// Actualizar interfaz de configuración
+function updateConfigUI() {
+    document.getElementById('auto-download-toggle').classList.toggle('active', userConfig.autoDownload);
+    document.getElementById('notifications-toggle').classList.toggle('active', userConfig.notifications);
+    document.getElementById('max-concurrent-range').value = userConfig.maxConcurrent;
+    document.getElementById('max-concurrent-value').textContent = userConfig.maxConcurrent;
+    document.getElementById('quality-select').value = userConfig.quality;
+}
+
+// Toggle configuración
+function toggleConfig(setting) {
+    userConfig[setting] = !userConfig[setting];
+    saveUserConfig();
+    updateConfigUI();
+    showNotification(`${setting} ${userConfig[setting] ? 'activado' : 'desactivado'}`, 'info');
+}
+
+// Actualizar configuraciones
+function updateMaxConcurrent(value) {
+    userConfig.maxConcurrent = parseInt(value);
+    document.getElementById('max-concurrent-value').textContent = value;
+    saveUserConfig();
+}
+
+function updateQuality(value) {
+    userConfig.quality = value;
+    saveUserConfig();
+    showNotification(`Calidad establecida: ${value}`, 'info');
+}
+
+// Sistema de notificaciones
+function showNotification(message, type = 'info') {
+    if (!userConfig.notifications) return;
+    
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type} position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        ${message}
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.remove();
+    }, 3000);
+}
+
+// Sistema de búsqueda y filtros
+function initializeSearch() {
+    const searchInput = document.getElementById('search-input');
+    const filterChips = document.querySelectorAll('.filter-chip');
+    
+    searchInput.addEventListener('input', filterHistorial);
+    
+    filterChips.forEach(chip => {
+        chip.addEventListener('click', function() {
+            filterChips.forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            filterHistorial();
+        });
+    });
+}
+
+function filterHistorial() {
+    const searchTerm = document.getElementById('search-input').value.toLowerCase();
+    const activeFilter = document.querySelector('.filter-chip.active').dataset.filter;
+    const items = document.querySelectorAll('.historial-item');
+    
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    
+    items.forEach(item => {
+        const filename = item.dataset.filename;
+        const date = new Date(parseInt(item.dataset.date) * 1000);
+        const size = parseInt(item.dataset.size);
+        
+        // Filtro de búsqueda
+        const matchesSearch = filename.includes(searchTerm);
+        
+        // Filtro de fecha/tipo
+        let matchesFilter = true;
+        switch(activeFilter) {
+            case 'today':
+                matchesFilter = date >= today;
+                break;
+            case 'week':
+                matchesFilter = date >= weekAgo;
+                break;
+            case 'large':
+                matchesFilter = size > 100 * 1024 * 1024; // > 100MB
+                break;
+        }
+        
+        item.style.display = (matchesSearch && matchesFilter) ? 'flex' : 'none';
+    });
+}
+
+// Sistema de cola de descargas
+function addToQueue() {
+    const url = document.getElementById('queue-url-input').value.trim();
+    if (!url) {
+        showNotification('Introduce una URL válida', 'warning');
+        return;
+    }
+    
+    downloadQueue.push({
+        id: Date.now(),
+        url: url,
+        status: 'pending'
+    });
+    
+    document.getElementById('queue-url-input').value = '';
+    updateQueueDisplay();
+    showNotification('URL añadida a la cola', 'success');
+}
+
+function addToQueueFromForm() {
+    const url = document.getElementById('m3u8-url').value.trim();
+    const name = document.getElementById('output-name').value.trim();
+    
+    if (!url) {
+        showNotification('Introduce una URL en el formulario principal', 'warning');
+        return;
+    }
+    
+    downloadQueue.push({
+        id: Date.now(),
+        url: url,
+        name: name,
+        status: 'pending'
+    });
+    
+    updateQueueDisplay();
+    showNotification('URL añadida a la cola desde el formulario', 'success');
+}
+
+function removeFromQueue(id) {
+    downloadQueue = downloadQueue.filter(item => item.id !== id);
+    updateQueueDisplay();
+    showNotification('Elemento eliminado de la cola', 'info');
+}
+
+function updateQueueDisplay() {
+    const container = document.getElementById('download-queue');
+    
+    if (downloadQueue.length === 0) {
+        container.innerHTML = '<p class="text-center text-muted">La cola está vacía</p>';
+        return;
+    }
+    
+    container.innerHTML = downloadQueue.map((item, index) => `
+        <div class="queue-item">
+            <div class="queue-number">${index + 1}</div>
+            <div class="flex-grow-1 me-2">
+                <div class="text-truncate">${item.name || 'Sin nombre'}</div>
+                <small class="text-muted text-break">${item.url}</small>
+            </div>
+            <div class="d-flex gap-1">
+                <button class="btn btn-outline-danger btn-sm" onclick="removeFromQueue(${item.id})" title="Eliminar de la cola">
+                    🗑️
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function toggleQueue() {
+    queueRunning = !queueRunning;
+    const button = document.getElementById('queue-toggle-text');
+    
+    if (queueRunning) {
+        button.textContent = '⏸️ Pausar';
+        processQueue();
+        showNotification('Cola iniciada', 'success');
+    } else {
+        button.textContent = '▶️ Iniciar';
+        showNotification('Cola pausada', 'warning');
+    }
+}
+
+async function processQueue() {
+    if (!queueRunning || downloadQueue.length === 0) return;
+    
+    const activeDownloads = Object.keys(multi_progress || {}).filter(id => 
+        multi_progress[id].status === 'downloading'
+    ).length;
+    
+    if (activeDownloads >= userConfig.maxConcurrent) {
+        setTimeout(processQueue, 2000);
+        return;
+    }
+    
+    const nextItem = downloadQueue.find(item => item.status === 'pending');
+    if (!nextItem) {
+        setTimeout(processQueue, 2000);
+        return;
+    }
+    
+    nextItem.status = 'downloading';
+    updateQueueDisplay();
+    
+    // Descargar el siguiente elemento
+    try {
+        let params = 'm3u8_url=' + encodeURIComponent(nextItem.url);
+        if (nextItem.name) params += '&output_name=' + encodeURIComponent(nextItem.name);
+        
+        const response = await fetch('/descargar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params
+        });
+        
+        const data = await response.json();
+        if (data.download_id) {
+            mostrarDescargaActiva(data.download_id, nextItem.url);
+            nextItem.status = 'started';
+            downloadQueue = downloadQueue.filter(item => item.id !== nextItem.id);
+            updateQueueDisplay();
+        } else {
+            nextItem.status = 'error';
+            showNotification(`Error al iniciar descarga: ${data.error}`, 'danger');
+        }
+    } catch (error) {
+        nextItem.status = 'error';
+        showNotification(`Error en la cola: ${error.message}`, 'danger');
+    }
+    
+    setTimeout(processQueue, 1000);
+}
+
+// Actualizar estadísticas del dashboard
+function updateDashboardStats() {
+    // Calcular estadísticas
+    const items = document.querySelectorAll('.historial-item');
+    let totalSize = 0;
+    let totalCount = items.length;
+    
+    items.forEach(item => {
+        totalSize += parseInt(item.dataset.size || 0);
+    });
+    
+    // Actualizar interfaz
+    document.getElementById('total-downloads').textContent = totalCount;
+    document.getElementById('total-size').textContent = formatFileSize(totalSize);
+    
+    // Calcular tasa de éxito (simplificado)
+    const activeStats = JSON.parse(localStorage.getItem('download_stats') || '{"success": 0, "total": 0}');
+    const successRate = activeStats.total > 0 ? Math.round((activeStats.success / activeStats.total) * 100) : 100;
+    document.getElementById('success-rate').textContent = successRate + '%';
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+// Inicialización al cargar la página
+document.addEventListener('DOMContentLoaded', function() {
+    loadUserConfig();
+    initializeSearch();
+    updateQueueDisplay();
+    updateDashboardStats();
+    
+    // Actualizar estadísticas cada 30 segundos
+    setInterval(updateDashboardStats, 30000);
+});
+
+// Funciones originales (mantenidas)
 function playM3U8() {
     const url = document.getElementById('m3u8-url').value.trim();
     const container = document.getElementById('video-container');
@@ -589,6 +1281,7 @@ function playM3U8() {
         container.innerHTML = '<p>Tu navegador no soporta reproducción M3U8.</p>';
     }
 }
+
 document.getElementById('descargar-form').addEventListener('submit', function(e) {
     e.preventDefault();
     let url = document.getElementById('m3u8-url').value.trim();
@@ -601,12 +1294,15 @@ document.getElementById('descargar-form').addEventListener('submit', function(e)
         body: params
     }).then(r => r.json()).then(data => {
         if (data.download_id) {
-            // Obtener la URL del formulario para pasarla a la descarga activa
             let url = document.getElementById('m3u8-url').value.trim();
             mostrarDescargaActiva(data.download_id, url);
+            showNotification('Descarga iniciada', 'success');
+        } else if (data.error) {
+            showNotification(data.error, 'danger');
         }
     });
 });
+
 function mostrarDescargaActiva(download_id, url) {
     let div = document.getElementById('descargas-activas');
     let barra = document.createElement('div');
@@ -633,7 +1329,6 @@ function mostrarDescargaActiva(download_id, url) {
     
     div.appendChild(barra);
     
-    // Agregar botón de copiar URL si existe
     if (url) {
         let urlDiv = document.getElementById(`url-${download_id}`);
         let copyBtn = document.createElement('button');
@@ -646,6 +1341,7 @@ function mostrarDescargaActiva(download_id, url) {
     
     actualizarProgreso(download_id);
 }
+
 function actualizarProgreso(download_id) {
     fetch('/progreso/' + download_id).then(r => r.json()).then(data => {
         let bar = document.getElementById('bar-' + download_id);
@@ -693,7 +1389,7 @@ function actualizarProgreso(download_id) {
                         🗑️ Quitar
                     </button>
                 </div>`;
-            // Actualizar el historial automáticamente
+            showNotification(`Descarga completada: ${data.output_file}`, 'success');
             setTimeout(function() { 
                 location.reload(); 
             }, 2000);
@@ -718,6 +1414,7 @@ function actualizarProgreso(download_id) {
                         🗑️ Quitar
                     </button>
                 </div>`;
+            showNotification(`Error en descarga: ${data.error}`, 'danger');
         } else if (data.status === 'cancelled') {
             if (archivo) archivo.innerHTML = `<span class="status-indicator status-cancelled"></span>🚫 Descarga cancelada`;
             if (cancelBtn) cancelBtn.style.display = 'none';
@@ -739,9 +1436,11 @@ function actualizarProgreso(download_id) {
                         🗑️ Quitar
                     </button>
                 </div>`;
+            showNotification('Descarga cancelada', 'warning');
         }
     });
 }
+
 function cancelarDescarga(download_id) {
     if (confirm('¿Estás seguro de que quieres cancelar esta descarga?')) {
         fetch('/cancelar/' + download_id, {
@@ -754,13 +1453,13 @@ function cancelarDescarga(download_id) {
         });
     }
 }
+
 function eliminarArchivo(filename) {
     if (confirm(`¿Estás seguro de que quieres eliminar el archivo "${filename}"?\n\nEsta acción no se puede deshacer.`)) {
         fetch('/eliminar/' + encodeURIComponent(filename), {
             method: 'DELETE'
         }).then(r => r.json()).then(data => {
             if (data.success) {
-                // Recargar la página para actualizar el historial
                 location.reload();
             } else {
                 alert('Error al eliminar el archivo: ' + (data.error || 'Error desconocido'));
@@ -770,18 +1469,17 @@ function eliminarArchivo(filename) {
         });
     }
 }
+
 function eliminarDescargaActiva(download_id) {
     if (confirm('¿Quieres quitar esta descarga de la lista de descargas activas?')) {
         fetch('/eliminar_descarga/' + download_id, {
             method: 'DELETE'
         }).then(r => r.json()).then(data => {
             if (data.success) {
-                // Remover el elemento del DOM
                 let elemento = document.getElementById('descarga-' + download_id);
                 if (elemento) {
                     elemento.remove();
                 }
-                // Actualizar estadísticas si es necesario
                 setTimeout(function() {
                     location.reload();
                 }, 500);
@@ -793,26 +1491,22 @@ function eliminarDescargaActiva(download_id) {
         });
     }
 }
+
 function reintentarDescarga(download_id) {
-    // Obtener los datos de la descarga fallida
     fetch('/progreso/' + download_id).then(r => r.json()).then(data => {
         if (data.url && data.output_file) {
             if (confirm(`¿Reintentar la descarga de "${data.output_file}"?`)) {
-                // Rellenar el formulario con los datos de la descarga fallida
                 document.getElementById('m3u8-url').value = data.url;
                 document.getElementById('output-name').value = data.output_file.replace('.mp4', '');
                 
-                // Eliminar la descarga fallida de la lista
                 fetch('/eliminar_descarga/' + download_id, {
                     method: 'DELETE'
                 }).then(() => {
-                    // Remover el elemento del DOM inmediatamente
                     let elemento = document.getElementById('descarga-' + download_id);
                     if (elemento) {
                         elemento.remove();
                     }
                     
-                    // Iniciar nueva descarga automáticamente
                     let params = 'm3u8_url=' + encodeURIComponent(data.url);
                     let outputName = data.output_file.replace('.mp4', '');
                     if (outputName) params += '&output_name=' + encodeURIComponent(outputName);
@@ -839,14 +1533,12 @@ function reintentarDescarga(download_id) {
         alert('Error al obtener datos de la descarga: ' + error.message);
     });
 }
+
 function copiarUrl(url) {
-    // Decodificar la URL si está codificada
     let urlToCopy = decodeURIComponent(url);
     
     if (navigator.clipboard && window.isSecureContext) {
-        // Usar la API moderna del portapapeles
         navigator.clipboard.writeText(urlToCopy).then(function() {
-            // Mostrar confirmación temporal
             let button = event.target;
             let originalText = button.innerHTML;
             button.innerHTML = '✅';
@@ -856,16 +1548,14 @@ function copiarUrl(url) {
                 button.disabled = false;
             }, 1500);
         }).catch(function(err) {
-            // Fallback si falla la API moderna
             copiarUrlFallback(urlToCopy);
         });
     } else {
-        // Fallback para navegadores más antiguos
         copiarUrlFallback(urlToCopy);
     }
 }
+
 function copiarUrlFromData(button) {
-    // Obtener URL del atributo data
     let url = button.getAttribute('data-url');
     if (!url) {
         alert('No se encontró la URL para copiar.');
@@ -873,9 +1563,7 @@ function copiarUrlFromData(button) {
     }
     
     if (navigator.clipboard && window.isSecureContext) {
-        // Usar la API moderna del portapapeles
         navigator.clipboard.writeText(url).then(function() {
-            // Mostrar confirmación temporal
             let originalText = button.innerHTML;
             button.innerHTML = '✅';
             button.disabled = true;
@@ -884,23 +1572,19 @@ function copiarUrlFromData(button) {
                 button.disabled = false;
             }, 1500);
         }).catch(function(err) {
-            // Fallback si falla la API moderna
             copiarUrlFallback(url);
         });
     } else {
-        // Fallback para navegadores más antiguos
         copiarUrlFallback(url);
     }
 }
+
 function reproducirUrl(url) {
-    // Decodificar la URL y ponerla en el campo de entrada
     let urlToPlay = decodeURIComponent(url);
     document.getElementById('m3u8-url').value = urlToPlay;
     
-    // Reproducir automáticamente
     playM3U8();
     
-    // Mostrar confirmación visual en el botón
     let button = event.target;
     let originalText = button.innerHTML;
     button.innerHTML = '🎬';
@@ -910,21 +1594,18 @@ function reproducirUrl(url) {
         button.disabled = false;
     }, 2000);
 }
+
 function reproducirUrlFromData(button) {
-    // Obtener URL del atributo data
     let url = button.getAttribute('data-url');
     if (!url) {
         alert('No se encontró la URL para reproducir.');
         return;
     }
     
-    // Poner la URL en el campo de entrada
     document.getElementById('m3u8-url').value = url;
     
-    // Reproducir automáticamente
     playM3U8();
     
-    // Mostrar confirmación visual en el botón
     let originalText = button.innerHTML;
     button.innerHTML = '🎬';
     button.disabled = true;
@@ -933,17 +1614,14 @@ function reproducirUrlFromData(button) {
         button.disabled = false;
     }, 2000);
 }
+
 function reproducirUrlActiva(download_id) {
-    // Obtener los datos de la descarga para acceder a la URL
     fetch('/progreso/' + download_id).then(r => r.json()).then(data => {
         if (data.url) {
-            // Poner la URL en el campo de entrada
             document.getElementById('m3u8-url').value = data.url;
             
-            // Reproducir automáticamente
             playM3U8();
             
-            // Mostrar confirmación visual en el botón
             let button = event.target;
             let originalText = button.innerHTML;
             button.innerHTML = '🎬 Reproduciendo';
@@ -959,11 +1637,10 @@ function reproducirUrlActiva(download_id) {
         alert('Error al obtener la URL: ' + error.message);
     });
 }
+
 function copiarUrlFallback(url) {
-    // Decodificar la URL si está codificada
     let urlToCopy = typeof url === 'string' ? decodeURIComponent(url) : url;
     
-    // Crear un elemento temporal para copiar
     let textArea = document.createElement('textarea');
     textArea.value = urlToCopy;
     textArea.style.position = 'fixed';
@@ -995,16 +1672,19 @@ def index():
         for f in glob.glob(os.path.join(static_dir, '*.mp4')):
             filename = os.path.basename(f)
             metadata = load_video_metadata(filename)
+            file_stats = os.stat(f)
             
             archivo_info = {
                 'archivo': filename,
-                'tamaño': format_file_size(os.path.getsize(f)),
-                'fecha': format_modification_time(os.path.getmtime(f)),
+                'tamaño': format_file_size(file_stats.st_size),
+                'tamaño_bytes': file_stats.st_size,
+                'fecha': format_modification_time(file_stats.st_mtime),
+                'fecha_timestamp': file_stats.st_mtime,
                 'url': metadata['url'] if metadata and 'url' in metadata else None
             }
             archivos.append(archivo_info)
         # Ordenar por fecha de modificación (más reciente primero)
-        archivos.sort(key=lambda x: os.path.getmtime(os.path.join(static_dir, x['archivo'])), reverse=True)
+        archivos.sort(key=lambda x: x['fecha_timestamp'], reverse=True)
     
     # Estadísticas de descargas activas
     stats = get_download_stats()
@@ -1345,6 +2025,197 @@ def favicon():
     # Devolver un favicon básico o un 204 No Content
     from flask import Response
     return Response(status=204)
+
+@app.route('/api/stats', methods=['GET'])
+def get_api_stats():
+    """Endpoint para obtener estadísticas detalladas de la aplicación"""
+    try:
+        static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
+        total_files = 0
+        total_size = 0
+        
+        if os.path.exists(static_dir):
+            for f in glob.glob(os.path.join(static_dir, '*.mp4')):
+                total_files += 1
+                total_size += os.path.getsize(f)
+        
+        download_stats = get_download_stats()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_downloads': total_files,
+                'total_size_bytes': total_size,
+                'total_size_formatted': format_file_size(total_size),
+                'active_downloads': download_stats,
+                'timestamp': time.time()
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/search', methods=['POST'])
+def search_videos():
+    """Endpoint para búsqueda avanzada de videos"""
+    try:
+        data = request.get_json()
+        query = data.get('query', '').lower()
+        filters = data.get('filters', {})
+        
+        static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
+        results = []
+        
+        if os.path.exists(static_dir):
+            for f in glob.glob(os.path.join(static_dir, '*.mp4')):
+                filename = os.path.basename(f)
+                file_stats = os.stat(f)
+                metadata = load_video_metadata(filename)
+                
+                # Aplicar filtros de búsqueda
+                if query and query not in filename.lower():
+                    continue
+                
+                # Filtros adicionales
+                if filters.get('min_size') and file_stats.st_size < filters['min_size']:
+                    continue
+                    
+                if filters.get('max_size') and file_stats.st_size > filters['max_size']:
+                    continue
+                
+                results.append({
+                    'filename': filename,
+                    'size': file_stats.st_size,
+                    'size_formatted': format_file_size(file_stats.st_size),
+                    'date': file_stats.st_mtime,
+                    'date_formatted': format_modification_time(file_stats.st_mtime),
+                    'url': metadata['url'] if metadata and 'url' in metadata else None
+                })
+        
+        return jsonify({'success': True, 'results': results})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/config', methods=['GET', 'POST'])
+def handle_config():
+    """Endpoint para manejar configuraciones de usuario"""
+    global MAX_CONCURRENT_DOWNLOADS
+    
+    if request.method == 'GET':
+        # Devolver configuración predeterminada
+        return jsonify({
+            'success': True,
+            'config': {
+                'max_concurrent_downloads': MAX_CONCURRENT_DOWNLOADS,
+                'auto_download': False,
+                'notifications': True,
+                'quality': 'auto'
+            }
+        })
+    
+    elif request.method == 'POST':
+        try:
+            data = request.get_json()
+            # Aquí podrías guardar las configuraciones en una base de datos
+            # Por ahora solo validamos y devolvemos éxito
+            
+            if 'max_concurrent_downloads' in data:
+                MAX_CONCURRENT_DOWNLOADS = max(1, min(10, int(data['max_concurrent_downloads'])))
+            
+            return jsonify({'success': True, 'message': 'Configuración actualizada'})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    return jsonify({'success': False, 'error': 'Método no permitido'}), 405
+
+@app.route('/api/queue', methods=['GET', 'POST', 'DELETE'])
+def handle_download_queue():
+    """Endpoint para manejar la cola de descargas"""
+    if request.method == 'GET':
+        # Devolver cola actual (podrías implementar persistencia)
+        return jsonify({
+            'success': True,
+            'queue': [],  # Cola vacía por defecto
+            'status': 'stopped'
+        })
+    
+    elif request.method == 'POST':
+        try:
+            data = request.get_json()
+            url = data.get('url', '').strip()
+            name = data.get('name', '').strip()
+            
+            if not url or not is_valid_m3u8_url(url):
+                return jsonify({'success': False, 'error': 'URL M3U8 no válida'}), 400
+            
+            # Aquí podrías añadir a una cola persistente
+            return jsonify({
+                'success': True, 
+                'message': 'URL añadida a la cola',
+                'item': {'url': url, 'name': name, 'id': str(uuid.uuid4())}
+            })
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    elif request.method == 'DELETE':
+        try:
+            data = request.get_json()
+            item_id = data.get('id')
+            # Aquí podrías eliminar de la cola persistente
+            return jsonify({'success': True, 'message': 'Elemento eliminado de la cola'})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    return jsonify({'success': False, 'error': 'Método no permitido'}), 405
+
+@app.route('/api/analytics', methods=['GET'])
+def get_analytics():
+    """Endpoint para obtener datos analíticos"""
+    try:
+        static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
+        
+        # Analizar archivos por tamaño y fecha
+        files_by_date = {}
+        size_distribution = {'small': 0, 'medium': 0, 'large': 0}
+        
+        if os.path.exists(static_dir):
+            for f in glob.glob(os.path.join(static_dir, '*.mp4')):
+                file_stats = os.stat(f)
+                date_key = format_modification_time(file_stats.st_mtime)[:10]  # Solo fecha
+                
+                if date_key not in files_by_date:
+                    files_by_date[date_key] = 0
+                files_by_date[date_key] += 1
+                
+                # Categorizar por tamaño
+                size_mb = file_stats.st_size / (1024 * 1024)
+                if size_mb < 50:
+                    size_distribution['small'] += 1
+                elif size_mb < 200:
+                    size_distribution['medium'] += 1
+                else:
+                    size_distribution['large'] += 1
+        
+        return jsonify({
+            'success': True,
+            'analytics': {
+                'files_by_date': files_by_date,
+                'size_distribution': size_distribution,
+                'total_active_downloads': len(multi_progress),
+                'success_rate': calculate_success_rate()
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def calculate_success_rate():
+    """Calcula la tasa de éxito de las descargas"""
+    if not multi_progress:
+        return 100
+    
+    completed = sum(1 for d in multi_progress.values() if d['status'] == 'done')
+    total = len(multi_progress)
+    
+    return round((completed / total) * 100, 1) if total > 0 else 100
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
