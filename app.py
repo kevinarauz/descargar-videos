@@ -541,7 +541,7 @@ default_html = '''
             <a href="https://getbootstrap.com/" target="_blank">Bootstrap</a> • 
             <a href="https://ffmpeg.org/" target="_blank">FFmpeg</a>
           </div>
-          <div class="small opacity-75">Versión 2.0 - Interfaz moderna con principios UI/UX</div>
+          <div class="small opacity-75">Versión 1.0.0 - Interfaz moderna con principios UI/UX</div>
           <div class="fw-bold" style="color: #fbbf24; margin-top: 0.5rem;">
             👨‍💻 Creado por <span style="color: #fff;">Ingeniero Kevin Aráuz</span>
           </div>
