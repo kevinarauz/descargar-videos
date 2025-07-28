@@ -138,8 +138,11 @@ default_html = '''
             </div>
             <div class="d-flex flex-column">
               {% if item.url %}
-              <button class="btn btn-outline-info btn-sm mb-1" onclick="copiarUrl('{{item.url}}')" title="Copiar URL al portapapeles">
+              <button class="btn btn-outline-info btn-sm mb-1" onclick="copiarUrl('{{item.url|e}}')" title="Copiar URL al portapapeles">
                 📋
+              </button>
+              <button class="btn btn-outline-success btn-sm mb-1" onclick="reproducirUrl('{{item.url|e}}')" title="Reproducir video">
+                ▶️
               </button>
               {% endif %}
               <button class="btn btn-outline-danger btn-sm" onclick="eliminarArchivo('{{item.archivo}}')" title="Eliminar archivo">
@@ -242,6 +245,7 @@ function mostrarDescargaActiva(download_id, url) {
         </div>
         <div class='mt-2 url-display small' id="url-${download_id}">
             <strong>🔗 URL:</strong> <span class="text-break">${url || 'N/A'}</span>
+            ${url ? '<button class="btn btn-outline-info btn-sm ms-2" onclick="copiarUrl(\'' + encodeURIComponent(url) + '\')" title="Copiar URL">📋</button>' : ''}
         </div>
         <div>Progreso: <span id='progreso-${download_id}'>0%</span></div>
         <div class='progress mb-2'>
@@ -250,17 +254,6 @@ function mostrarDescargaActiva(download_id, url) {
         <div>
             <button class='btn btn-danger btn-sm' id='cancel-btn-${download_id}' onclick='cancelarDescarga("${download_id}")'>Cancelar</button>
         </div>`;
-    
-    // Agregar botón de copiar URL si existe
-    if (url) {
-        let urlDiv = barra.querySelector(`#url-${download_id}`);
-        let copyBtn = document.createElement('button');
-        copyBtn.className = 'btn btn-outline-info btn-sm ms-2';
-        copyBtn.innerHTML = '📋';
-        copyBtn.title = 'Copiar URL';
-        copyBtn.onclick = () => copiarUrl(url);
-        urlDiv.appendChild(copyBtn);
-    }
     
     div.appendChild(barra);
     actualizarProgreso(download_id);
@@ -330,6 +323,9 @@ function actualizarProgreso(download_id) {
                     <button class='btn btn-warning btn-sm me-2' onclick='reintentarDescarga("${download_id}")' title='Reintentar descarga'>
                         🔄 Reintentar
                     </button>
+                    <button class='btn btn-success btn-sm me-2' onclick='reproducirUrlActiva("${download_id}")' title='Reproducir video'>
+                        ▶️ Reproducir
+                    </button>
                     <button class='btn btn-outline-secondary btn-sm' onclick='eliminarDescargaActiva("${download_id}")' title='Eliminar de la lista'>
                         🗑️ Quitar
                     </button>
@@ -347,6 +343,9 @@ function actualizarProgreso(download_id) {
                 <div class='mt-2'>
                     <button class='btn btn-warning btn-sm me-2' onclick='reintentarDescarga("${download_id}")' title='Reintentar descarga'>
                         🔄 Reintentar
+                    </button>
+                    <button class='btn btn-success btn-sm me-2' onclick='reproducirUrlActiva("${download_id}")' title='Reproducir video'>
+                        ▶️ Reproducir
                     </button>
                     <button class='btn btn-outline-secondary btn-sm' onclick='eliminarDescargaActiva("${download_id}")' title='Eliminar de la lista'>
                         🗑️ Quitar
@@ -453,9 +452,12 @@ function reintentarDescarga(download_id) {
     });
 }
 function copiarUrl(url) {
+    // Decodificar la URL si está codificada
+    let urlToCopy = decodeURIComponent(url);
+    
     if (navigator.clipboard && window.isSecureContext) {
         // Usar la API moderna del portapapeles
-        navigator.clipboard.writeText(url).then(function() {
+        navigator.clipboard.writeText(urlToCopy).then(function() {
             // Mostrar confirmación temporal
             let button = event.target;
             let originalText = button.innerHTML;
@@ -467,17 +469,64 @@ function copiarUrl(url) {
             }, 1500);
         }).catch(function(err) {
             // Fallback si falla la API moderna
-            copiarUrlFallback(url);
+            copiarUrlFallback(urlToCopy);
         });
     } else {
         // Fallback para navegadores más antiguos
-        copiarUrlFallback(url);
+        copiarUrlFallback(urlToCopy);
     }
 }
+function reproducirUrl(url) {
+    // Decodificar la URL y ponerla en el campo de entrada
+    let urlToPlay = decodeURIComponent(url);
+    document.getElementById('m3u8-url').value = urlToPlay;
+    
+    // Reproducir automáticamente
+    playM3U8();
+    
+    // Mostrar confirmación visual en el botón
+    let button = event.target;
+    let originalText = button.innerHTML;
+    button.innerHTML = '🎬';
+    button.disabled = true;
+    setTimeout(function() {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }, 2000);
+}
+function reproducirUrlActiva(download_id) {
+    // Obtener los datos de la descarga para acceder a la URL
+    fetch('/progreso/' + download_id).then(r => r.json()).then(data => {
+        if (data.url) {
+            // Poner la URL en el campo de entrada
+            document.getElementById('m3u8-url').value = data.url;
+            
+            // Reproducir automáticamente
+            playM3U8();
+            
+            // Mostrar confirmación visual en el botón
+            let button = event.target;
+            let originalText = button.innerHTML;
+            button.innerHTML = '🎬 Reproduciendo';
+            button.disabled = true;
+            setTimeout(function() {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }, 3000);
+        } else {
+            alert('No se pudo obtener la URL para reproducir.');
+        }
+    }).catch(error => {
+        alert('Error al obtener la URL: ' + error.message);
+    });
+}
 function copiarUrlFallback(url) {
+    // Decodificar la URL si está codificada
+    let urlToCopy = typeof url === 'string' ? decodeURIComponent(url) : url;
+    
     // Crear un elemento temporal para copiar
     let textArea = document.createElement('textarea');
-    textArea.value = url;
+    textArea.value = urlToCopy;
     textArea.style.position = 'fixed';
     textArea.style.opacity = '0';
     document.body.appendChild(textArea);
@@ -487,7 +536,7 @@ function copiarUrlFallback(url) {
         document.execCommand('copy');
         alert('URL copiada al portapapeles');
     } catch (err) {
-        alert('No se pudo copiar la URL. Cópiala manualmente: ' + url);
+        alert('No se pudo copiar la URL. Cópiala manualmente: ' + urlToCopy);
     }
     
     document.body.removeChild(textArea);
