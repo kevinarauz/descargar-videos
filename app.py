@@ -90,6 +90,21 @@ default_html = '''
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .url-metadata {
+            color: #b8e6b8 !important;
+            background: rgba(255,255,255,0.05);
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.25rem;
+            display: inline-block;
+            margin-top: 0.25rem;
+        }
+        .url-display {
+            color: #ddd !important;
+            background: rgba(255,255,255,0.08);
+            padding: 0.3rem 0.5rem;
+            border-radius: 0.3rem;
+            border-left: 3px solid #17a2b8;
+        }
     </style>
 </head>
 <body>
@@ -115,8 +130,8 @@ default_html = '''
               <div class="download-stats">
                 📦 {{item.tamaño}} • 📅 {{item.fecha}}
                 {% if item.url %}
-                <br><small class="text-muted">
-                  🔗 <span class="text-break" style="font-size: 0.7em;">{{item.url}}</span>
+                <br><small class="url-metadata">
+                  🔗 <span class="text-break" style="font-size: 0.75em;">{{item.url}}</span>
                 </small>
                 {% endif %}
               </div>
@@ -225,8 +240,8 @@ function mostrarDescargaActiva(download_id, url) {
         <div class="download-stats" id="stats-${download_id}">
             Inicializando...
         </div>
-        <div class='mt-2 text-muted small' id="url-${download_id}">
-            <strong>URL:</strong> <span class="text-break">${url || 'N/A'}</span>
+        <div class='mt-2 url-display small' id="url-${download_id}">
+            <strong>🔗 URL:</strong> <span class="text-break">${url || 'N/A'}</span>
         </div>
         <div>Progreso: <span id='progreso-${download_id}'>0%</span></div>
         <div class='progress mb-2'>
@@ -308,8 +323,8 @@ function actualizarProgreso(download_id) {
             if (stats) stats.innerText = 'Error en la descarga';
             document.getElementById('descarga-' + download_id).innerHTML += `
                 <div class='mt-2 text-danger'>${data.error}</div>
-                <div class='mt-2 text-muted small'>
-                    <strong>URL:</strong> <span class="text-break">${data.url || 'N/A'}</span>
+                <div class='mt-2 url-display small'>
+                    <strong>🔗 URL:</strong> <span class="text-break">${data.url || 'N/A'}</span>
                 </div>
                 <div class='mt-2'>
                     <button class='btn btn-warning btn-sm me-2' onclick='reintentarDescarga("${download_id}")' title='Reintentar descarga'>
@@ -326,8 +341,8 @@ function actualizarProgreso(download_id) {
             if (stats) stats.innerText = 'Cancelado por el usuario';
             document.getElementById('descarga-' + download_id).innerHTML += `
                 <div class='mt-2 text-warning'>Descarga cancelada por el usuario</div>
-                <div class='mt-2 text-muted small'>
-                    <strong>URL:</strong> <span class="text-break">${data.url || 'N/A'}</span>
+                <div class='mt-2 url-display small'>
+                    <strong>🔗 URL:</strong> <span class="text-break">${data.url || 'N/A'}</span>
                 </div>
                 <div class='mt-2'>
                     <button class='btn btn-warning btn-sm me-2' onclick='reintentarDescarga("${download_id}")' title='Reintentar descarga'>
