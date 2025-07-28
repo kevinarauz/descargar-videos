@@ -18,6 +18,8 @@ app.secret_key = 'supersecretkey'  # Cambia esto por una clave segura en producc
 
 # Diccionario para progreso de descargas múltiples
 multi_progress = {}
+# Diccionario para controlar cancelaciones
+cancelled_downloads = set()
 
 default_html = '''
 <!DOCTYPE html>
@@ -37,6 +39,16 @@ default_html = '''
         .sidebar a:hover { text-decoration: underline; }
         .main { padding: 2rem; }
         .credit { margin-top: 2rem; font-size: 0.9rem; color: #ccc; text-align: center; }
+        .descarga-item { 
+            background: rgba(255,255,255,0.1); 
+            padding: 1rem; 
+            margin-bottom: 1rem; 
+            border-radius: 0.5rem; 
+            border-left: 4px solid #007bff;
+        }
+        .descarga-cancelled { border-left-color: #ffc107 !important; }
+        .descarga-error { border-left-color: #dc3545 !important; }
+        .descarga-done { border-left-color: #28a745 !important; }
     </style>
 </head>
 <body>
@@ -125,7 +137,8 @@ function mostrarDescargaActiva(download_id) {
     let div = document.getElementById('descargas-activas');
     let barra = document.createElement('div');
     barra.id = 'descarga-' + download_id;
-    barra.innerHTML = `<div><strong id='archivo-${download_id}'>Preparando descarga...</strong></div><div>Progreso: <span id='progreso-${download_id}'>0%</span></div><div class='progress'><div class='progress-bar' id='bar-${download_id}' role='progressbar' style='width:0%'></div></div>`;
+    barra.className = 'descarga-item';
+    barra.innerHTML = `<div><strong id='archivo-${download_id}'>Preparando descarga...</strong></div><div>Progreso: <span id='progreso-${download_id}'>0%</span></div><div class='progress mb-2'><div class='progress-bar' id='bar-${download_id}' role='progressbar' style='width:0%'></div></div><div><button class='btn btn-danger btn-sm' id='cancel-btn-${download_id}' onclick='cancelarDescarga("${download_id}")'>Cancelar</button></div>`;
     div.appendChild(barra);
     actualizarProgreso(download_id);
 }
@@ -134,6 +147,9 @@ function actualizarProgreso(download_id) {
         let bar = document.getElementById('bar-' + download_id);
         let prog = document.getElementById('progreso-' + download_id);
         let archivo = document.getElementById('archivo-' + download_id);
+        let cancelBtn = document.getElementById('cancel-btn-' + download_id);
+        let descargaDiv = document.getElementById('descarga-' + download_id);
+        
         if (data.output_file && archivo) {
             archivo.innerText = `📥 ${data.output_file}`;
         }
@@ -145,12 +161,37 @@ function actualizarProgreso(download_id) {
             bar.style.width = '100%';
             prog.innerText = '100%';
             if (archivo) archivo.innerText = `✅ ${data.output_file}`;
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            if (descargaDiv) descargaDiv.className += ' descarga-done';
             document.getElementById('descarga-' + download_id).innerHTML += `<div class='mt-2'><a href='/static/${data.output_file}' download class='btn btn-primary btn-sm'>Descargar MP4</a></div>`;
+            // Actualizar el historial automáticamente
+            setTimeout(function() { 
+                location.reload(); 
+            }, 2000);
         } else if (data.status === 'error') {
             if (archivo) archivo.innerText = `❌ ${data.output_file || 'Error'}`;
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            if (descargaDiv) descargaDiv.className += ' descarga-error';
             document.getElementById('descarga-' + download_id).innerHTML += `<div class='mt-2 text-danger'>${data.error}</div>`;
+        } else if (data.status === 'cancelled') {
+            if (archivo) archivo.innerText = `🚫 Descarga cancelada`;
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            if (descargaDiv) descargaDiv.className += ' descarga-cancelled';
+            document.getElementById('descarga-' + download_id).innerHTML += `<div class='mt-2 text-warning'>Descarga cancelada por el usuario</div>`;
         }
     });
+}
+function cancelarDescarga(download_id) {
+    if (confirm('¿Estás seguro de que quieres cancelar esta descarga?')) {
+        fetch('/cancelar/' + download_id, {
+            method: 'POST'
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                let archivo = document.getElementById('archivo-' + download_id);
+                if (archivo) archivo.innerText = `🚫 Cancelando...`;
+            }
+        });
+    }
 }
 </script>
 </body>
@@ -195,6 +236,11 @@ def descargar():
     }
     def run_download():
         try:
+            # Verificar si ya fue cancelado antes de empezar
+            if download_id in cancelled_downloads:
+                multi_progress[download_id]['status'] = 'cancelled'
+                return
+                
             # Usar el directorio temp_segments común (como en el clásico)
             temp_dir = os.path.join(os.path.dirname(__file__), 'temp_segments')
             if not os.path.exists(temp_dir):
@@ -204,7 +250,14 @@ def descargar():
             downloader = M3U8Downloader(m3u8_url=m3u8_url, output_filename=output_file, max_workers=20)
             segment_urls = downloader._get_segment_urls()
             multi_progress[download_id]['total'] = len(segment_urls)
+            
             for i, url in enumerate(segment_urls):
+                # Verificar cancelación en cada iteración
+                if download_id in cancelled_downloads:
+                    multi_progress[download_id]['status'] = 'cancelled'
+                    multi_progress[download_id]['error'] = 'Descarga cancelada por el usuario'
+                    return
+                    
                 try:
                     downloader._download_segment(url, i)
                     seg_path = os.path.join(temp_dir, f'segment_{i:05d}.ts')
@@ -217,6 +270,13 @@ def descargar():
                 porcentaje = int(((i + 1) / len(segment_urls)) * 100) if len(segment_urls) > 0 else 0
                 multi_progress[download_id]['current'] = i + 1
                 multi_progress[download_id]['porcentaje'] = porcentaje
+                
+            # Verificar cancelación antes de la fusión
+            if download_id in cancelled_downloads:
+                multi_progress[download_id]['status'] = 'cancelled'
+                multi_progress[download_id]['error'] = 'Descarga cancelada por el usuario'
+                return
+                
             # Fusión y movimiento del archivo MP4
             if multi_progress[download_id]['status'] == 'downloading':
                 segment_files = [f'segment_{i:05d}.ts' for i in range(len(segment_urls))]
@@ -237,6 +297,9 @@ def descargar():
         except Exception as e:
             multi_progress[download_id]['status'] = 'error'
             multi_progress[download_id]['error'] = str(e)
+        finally:
+            # Limpiar el ID de cancelación cuando termine la descarga
+            cancelled_downloads.discard(download_id)
     thread = threading.Thread(target=run_download)
     thread.start()
     return jsonify({'download_id': download_id}), 202
@@ -246,6 +309,18 @@ def progreso(download_id):
     if download_id not in multi_progress:
         return jsonify({'status': 'error', 'error': 'ID de descarga no encontrado.'}), 404
     return jsonify(multi_progress[download_id]), 200
+
+@app.route('/cancelar/<download_id>', methods=['POST'])
+def cancelar_descarga(download_id):
+    if download_id not in multi_progress:
+        return jsonify({'success': False, 'error': 'ID de descarga no encontrado.'}), 404
+    
+    # Marcar la descarga como cancelada
+    cancelled_downloads.add(download_id)
+    multi_progress[download_id]['status'] = 'cancelled'
+    multi_progress[download_id]['error'] = 'Descarga cancelada por el usuario'
+    
+    return jsonify({'success': True}), 200
 
 @app.route('/static/<path:filename>', methods=['GET'])
 def serve_static(filename):
