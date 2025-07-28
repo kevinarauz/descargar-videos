@@ -56,6 +56,15 @@ default_html = '''
             object-fit: contain !important;
             background-color: #000 !important;
         }
+        .sidebar li {
+            background: rgba(255,255,255,0.05);
+            padding: 0.5rem;
+            border-radius: 0.3rem;
+            margin-bottom: 0.5rem !important;
+        }
+        .sidebar li:hover {
+            background: rgba(255,255,255,0.1);
+        }
     </style>
 </head>
 <body>
@@ -66,7 +75,12 @@ default_html = '''
       {% if historial and historial|length > 0 %}
         <ul>
         {% for item in historial %}
-          <li><a href="/static/{{item.archivo}}" download>{{item.archivo}}</a></li>
+          <li class="d-flex justify-content-between align-items-center mb-2">
+            <a href="/static/{{item.archivo}}" download class="text-truncate me-2">{{item.archivo}}</a>
+            <button class="btn btn-outline-danger btn-sm" onclick="eliminarArchivo('{{item.archivo}}')" title="Eliminar archivo">
+              🗑️
+            </button>
+          </li>
         {% endfor %}
         </ul>
       {% else %}
@@ -205,6 +219,22 @@ function cancelarDescarga(download_id) {
         });
     }
 }
+function eliminarArchivo(filename) {
+    if (confirm(`¿Estás seguro de que quieres eliminar el archivo "${filename}"?\n\nEsta acción no se puede deshacer.`)) {
+        fetch('/eliminar/' + encodeURIComponent(filename), {
+            method: 'DELETE'
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                // Recargar la página para actualizar el historial
+                location.reload();
+            } else {
+                alert('Error al eliminar el archivo: ' + (data.error || 'Error desconocido'));
+            }
+        }).catch(error => {
+            alert('Error al eliminar el archivo: ' + error.message);
+        });
+    }
+}
 </script>
 </body>
 </html>
@@ -333,6 +363,32 @@ def cancelar_descarga(download_id):
     multi_progress[download_id]['error'] = 'Descarga cancelada por el usuario'
     
     return jsonify({'success': True}), 200
+
+@app.route('/eliminar/<filename>', methods=['DELETE'])
+def eliminar_archivo(filename):
+    try:
+        # Validar que el nombre del archivo sea seguro
+        import re
+        if not re.match(r'^[a-zA-Z0-9_\-\. ]+\.mp4$', filename):
+            return jsonify({'success': False, 'error': 'Nombre de archivo no válido.'}), 400
+        
+        static_dir = os.path.join(os.path.dirname(__file__), 'static')
+        file_path = os.path.join(static_dir, filename)
+        
+        # Verificar que el archivo existe
+        if not os.path.exists(file_path):
+            return jsonify({'success': False, 'error': 'El archivo no existe.'}), 404
+        
+        # Verificar que el archivo está en el directorio static (seguridad)
+        if not os.path.abspath(file_path).startswith(os.path.abspath(static_dir)):
+            return jsonify({'success': False, 'error': 'Ruta de archivo no válida.'}), 400
+        
+        # Eliminar el archivo
+        os.remove(file_path)
+        return jsonify({'success': True, 'message': f'Archivo {filename} eliminado correctamente.'}), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error al eliminar el archivo: {str(e)}'}), 500
 
 @app.route('/static/<path:filename>', methods=['GET'])
 def serve_static(filename):
