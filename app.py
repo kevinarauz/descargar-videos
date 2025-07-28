@@ -1294,6 +1294,12 @@ function updateQueueDisplay() {
 
 function toggleQueue() {
     const action = queueRunning ? 'stop' : 'start';
+    const toggleBtn = document.getElementById('queue-toggle-text');
+    
+    // Mostrar indicador de carga
+    if (toggleBtn) {
+        toggleBtn.textContent = action === 'start' ? '⏳ Iniciando...' : '⏳ Deteniendo...';
+    }
     
     fetch('/api/queue', {
         method: 'POST',
@@ -1303,12 +1309,28 @@ function toggleQueue() {
         if (data.success) {
             queueRunning = !queueRunning;
             updateQueueDisplay();
-            showNotification(data.message, 'success');
+            
+            // Mensaje específico dependiendo de la acción
+            if (queueRunning) {
+                showNotification('✅ Cola iniciada - Las descargas comenzarán automáticamente', 'success');
+                // Forzar actualización inmediata de descargas activas
+                setTimeout(loadActiveDownloads, 1000);
+            } else {
+                showNotification('⏸️ Cola pausada', 'info');
+            }
         } else {
             showNotification('Error: ' + data.error, 'danger');
+            // Restaurar texto del botón en caso de error
+            if (toggleBtn) {
+                toggleBtn.textContent = queueRunning ? '⏸️ Pausar' : '▶️ Iniciar';
+            }
         }
     }).catch(error => {
         showNotification('Error: ' + error.message, 'danger');
+        // Restaurar texto del botón en caso de error
+        if (toggleBtn) {
+            toggleBtn.textContent = queueRunning ? '⏸️ Pausar' : '▶️ Iniciar';
+        }
     });
 }
 
@@ -1351,11 +1373,17 @@ document.addEventListener('DOMContentLoaded', function() {
     // Cargar descargas activas persistentes
     loadActiveDownloads();
     
+    // Actualizar progreso cada 2 segundos
+    setInterval(actualizarProgreso, 2000);
+    
     // Actualizar estadísticas cada 30 segundos
     setInterval(updateDashboardStats, 30000);
     
-    // Actualizar cola cada 10 segundos
-    setInterval(updateQueueDisplay, 10000);
+    // Actualizar cola cada 5 segundos (más frecuente)
+    setInterval(updateQueueDisplay, 5000);
+    
+    // Actualizar descargas activas cada 5 segundos
+    setInterval(loadActiveDownloads, 5000);
 });
 
 // Función para cargar descargas activas al refrescar
@@ -1366,10 +1394,29 @@ function loadActiveDownloads() {
         .then(data => {
             if (data.success && data.downloads) {
                 const activasContainer = document.getElementById('descargas-activas');
+                
+                // Obtener IDs ya mostrados para evitar duplicados
+                const existingIds = new Set();
+                activasContainer.querySelectorAll('[data-download-id]').forEach(el => {
+                    existingIds.add(el.dataset.downloadId);
+                });
+                
+                // Añadir solo nuevas descargas activas
                 Object.keys(data.downloads).forEach(download_id => {
                     const download = data.downloads[download_id];
                     if (['downloading', 'paused', 'error', 'cancelled'].includes(download.status)) {
-                        mostrarDescargaActiva(download_id, download.url);
+                        if (!existingIds.has(download_id)) {
+                            mostrarDescargaActiva(download_id, download.url);
+                        }
+                    }
+                });
+                
+                // Remover descargas que ya no están activas
+                activasContainer.querySelectorAll('[data-download-id]').forEach(el => {
+                    const downloadId = el.dataset.downloadId;
+                    if (!data.downloads[downloadId] || 
+                        data.downloads[downloadId].status === 'done') {
+                        el.remove();
                     }
                 });
             }
@@ -1620,6 +1667,7 @@ function mostrarDescargaActiva(download_id, url) {
     let barra = document.createElement('div');
     barra.id = 'descarga-' + download_id;
     barra.className = 'descarga-item';
+    barra.setAttribute('data-download-id', download_id);  // Añadir para rastreo
     barra.innerHTML = `
         <div>
             <span class="status-indicator status-downloading"></span>
