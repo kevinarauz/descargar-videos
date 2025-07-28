@@ -27,7 +27,7 @@ default_html = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Descargador M3U8 Mejorado</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📺</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%23007bff'/><rect x='4' y='8' width='24' height='16' rx='2' fill='white'/><rect x='6' y='10' width='20' height='12' rx='1' fill='%23000'/><polygon points='12,14 18,17 12,20' fill='white'/><circle cx='26' cy='26' r='4' fill='%23dc3545'/><path d='M24,24 L28,28 M28,24 L24,28' stroke='white' stroke-width='1.5' stroke-linecap='round'/></svg>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: #fff; }
