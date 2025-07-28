@@ -80,6 +80,11 @@ default_html = '''
             color: #ccc;
             margin-top: 0.25rem;
         }
+        .text-break {
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 0.85em;
+        }
     </style>
 </head>
 <body>
@@ -251,7 +256,13 @@ function actualizarProgreso(download_id) {
                     Math.round(data.end_time - data.start_time) : 0;
                 stats.innerText = `Completado en ${duracion}s`;
             }
-            document.getElementById('descarga-' + download_id).innerHTML += `<div class='mt-2'><a href='/static/${data.output_file}' download class='btn btn-primary btn-sm'>Descargar MP4</a></div>`;
+            document.getElementById('descarga-' + download_id).innerHTML += `
+                <div class='mt-2'>
+                    <a href='/static/${data.output_file}' download class='btn btn-primary btn-sm me-2'>Descargar MP4</a>
+                    <button class='btn btn-outline-secondary btn-sm' onclick='eliminarDescargaActiva("${download_id}")' title='Eliminar de la lista'>
+                        🗑️ Quitar
+                    </button>
+                </div>`;
             // Actualizar el historial automáticamente
             setTimeout(function() { 
                 location.reload(); 
@@ -261,13 +272,37 @@ function actualizarProgreso(download_id) {
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-error';
             if (stats) stats.innerText = 'Error en la descarga';
-            document.getElementById('descarga-' + download_id).innerHTML += `<div class='mt-2 text-danger'>${data.error}</div>`;
+            document.getElementById('descarga-' + download_id).innerHTML += `
+                <div class='mt-2 text-danger'>${data.error}</div>
+                <div class='mt-2 text-muted small'>
+                    <strong>URL:</strong> <span class="text-break">${data.url || 'N/A'}</span>
+                </div>
+                <div class='mt-2'>
+                    <button class='btn btn-warning btn-sm me-2' onclick='reintentarDescarga("${download_id}")' title='Reintentar descarga'>
+                        🔄 Reintentar
+                    </button>
+                    <button class='btn btn-outline-secondary btn-sm' onclick='eliminarDescargaActiva("${download_id}")' title='Eliminar de la lista'>
+                        🗑️ Quitar
+                    </button>
+                </div>`;
         } else if (data.status === 'cancelled') {
             if (archivo) archivo.innerHTML = `<span class="status-indicator status-cancelled"></span>🚫 Descarga cancelada`;
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-cancelled';
             if (stats) stats.innerText = 'Cancelado por el usuario';
-            document.getElementById('descarga-' + download_id).innerHTML += `<div class='mt-2 text-warning'>Descarga cancelada por el usuario</div>`;
+            document.getElementById('descarga-' + download_id).innerHTML += `
+                <div class='mt-2 text-warning'>Descarga cancelada por el usuario</div>
+                <div class='mt-2 text-muted small'>
+                    <strong>URL:</strong> <span class="text-break">${data.url || 'N/A'}</span>
+                </div>
+                <div class='mt-2'>
+                    <button class='btn btn-warning btn-sm me-2' onclick='reintentarDescarga("${download_id}")' title='Reintentar descarga'>
+                        🔄 Reintentar
+                    </button>
+                    <button class='btn btn-outline-secondary btn-sm' onclick='eliminarDescargaActiva("${download_id}")' title='Eliminar de la lista'>
+                        🗑️ Quitar
+                    </button>
+                </div>`;
         }
     });
 }
@@ -298,6 +333,75 @@ function eliminarArchivo(filename) {
             alert('Error al eliminar el archivo: ' + error.message);
         });
     }
+}
+function eliminarDescargaActiva(download_id) {
+    if (confirm('¿Quieres quitar esta descarga de la lista de descargas activas?')) {
+        fetch('/eliminar_descarga/' + download_id, {
+            method: 'DELETE'
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                // Remover el elemento del DOM
+                let elemento = document.getElementById('descarga-' + download_id);
+                if (elemento) {
+                    elemento.remove();
+                }
+                // Actualizar estadísticas si es necesario
+                setTimeout(function() {
+                    location.reload();
+                }, 500);
+            } else {
+                alert('Error al eliminar la descarga: ' + (data.error || 'Error desconocido'));
+            }
+        }).catch(error => {
+            alert('Error al eliminar la descarga: ' + error.message);
+        });
+    }
+}
+function reintentarDescarga(download_id) {
+    // Obtener los datos de la descarga fallida
+    fetch('/progreso/' + download_id).then(r => r.json()).then(data => {
+        if (data.url && data.output_file) {
+            if (confirm(`¿Reintentar la descarga de "${data.output_file}"?`)) {
+                // Rellenar el formulario con los datos de la descarga fallida
+                document.getElementById('m3u8-url').value = data.url;
+                document.getElementById('output-name').value = data.output_file.replace('.mp4', '');
+                
+                // Eliminar la descarga fallida de la lista
+                fetch('/eliminar_descarga/' + download_id, {
+                    method: 'DELETE'
+                }).then(() => {
+                    // Remover el elemento del DOM inmediatamente
+                    let elemento = document.getElementById('descarga-' + download_id);
+                    if (elemento) {
+                        elemento.remove();
+                    }
+                    
+                    // Iniciar nueva descarga automáticamente
+                    let params = 'm3u8_url=' + encodeURIComponent(data.url);
+                    let outputName = data.output_file.replace('.mp4', '');
+                    if (outputName) params += '&output_name=' + encodeURIComponent(outputName);
+                    
+                    fetch('/descargar', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: params
+                    }).then(r => r.json()).then(newData => {
+                        if (newData.download_id) {
+                            mostrarDescargaActiva(newData.download_id);
+                        } else if (newData.error) {
+                            alert('Error al reintentar: ' + newData.error);
+                        }
+                    }).catch(error => {
+                        alert('Error al reintentar: ' + error.message);
+                    });
+                });
+            }
+        } else {
+            alert('No se pueden obtener los datos de la descarga para reintentar.');
+        }
+    }).catch(error => {
+        alert('Error al obtener datos de la descarga: ' + error.message);
+    });
 }
 </script>
 </body>
@@ -452,20 +556,22 @@ def descargar():
     }
     
     def run_download():
+        # Crear directorio temporal único para esta descarga (fuera del try)
+        temp_dir = os.path.join(os.path.dirname(__file__), TEMP_DIR, download_id)
+        
         try:
             # Verificar si ya fue cancelado antes de empezar
             if download_id in cancelled_downloads:
                 multi_progress[download_id]['status'] = 'cancelled'
                 return
                 
-            # Usar el directorio temp_segments común
-            temp_dir = os.path.join(os.path.dirname(__file__), TEMP_DIR)
+            # Crear el directorio temporal
             if not os.path.exists(temp_dir):
-                os.makedirs(temp_dir)
+                os.makedirs(temp_dir, exist_ok=True)
             original_dir = os.getcwd()
             
-            # Descarga de segmentos
-            downloader = M3U8Downloader(m3u8_url=m3u8_url, output_filename=output_file, max_workers=20)
+            # Descarga de segmentos con directorio específico
+            downloader = M3U8Downloader(m3u8_url=m3u8_url, output_filename=output_file, max_workers=20, temp_dir=temp_dir)
             segment_urls = downloader._get_segment_urls()
             multi_progress[download_id]['total'] = len(segment_urls)
             
@@ -517,6 +623,14 @@ def descargar():
             multi_progress[download_id]['status'] = 'error'
             multi_progress[download_id]['error'] = str(e)
         finally:
+            # Limpiar el directorio temporal específico de esta descarga
+            try:
+                if os.path.exists(temp_dir):
+                    import shutil
+                    shutil.rmtree(temp_dir)
+            except Exception as cleanup_error:
+                print(f"Error al limpiar directorio temporal {temp_dir}: {cleanup_error}")
+            
             # Limpiar el ID de cancelación cuando termine la descarga
             cancelled_downloads.discard(download_id)
     
@@ -567,6 +681,27 @@ def eliminar_archivo(filename):
         
     except Exception as e:
         return jsonify({'success': False, 'error': f'Error al eliminar el archivo: {str(e)}'}), 500
+
+@app.route('/eliminar_descarga/<download_id>', methods=['DELETE'])
+def eliminar_descarga_activa(download_id):
+    try:
+        if download_id not in multi_progress:
+            return jsonify({'success': False, 'error': 'ID de descarga no encontrado.'}), 404
+        
+        status = multi_progress[download_id]['status']
+        
+        # Solo permitir eliminar descargas que no están activamente descargando
+        if status == 'downloading':
+            return jsonify({'success': False, 'error': 'No se puede eliminar una descarga en progreso. Cancélala primero.'}), 400
+        
+        # Eliminar la descarga del progreso
+        del multi_progress[download_id]
+        cancelled_downloads.discard(download_id)
+        
+        return jsonify({'success': True, 'message': 'Descarga eliminada de la lista.'}), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error al eliminar la descarga: {str(e)}'}), 500
 
 @app.route('/static/<path:filename>', methods=['GET'])
 def serve_static(filename):

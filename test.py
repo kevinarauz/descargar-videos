@@ -9,10 +9,10 @@ class M3U8Downloader:
     """
     Versión 4.1: Corregido el error de llamada al método cleanup.
     """
-    def __init__(self, m3u8_url: str, output_filename: str = 'output.mp4', max_workers: int = 20):
+    def __init__(self, m3u8_url: str, output_filename: str = 'output.mp4', max_workers: int = 20, temp_dir: str = 'temp_segments'):
         self.m3u8_url = m3u8_url
         self.output_filename = output_filename
-        self.temp_dir = 'temp_segments'
+        self.temp_dir = temp_dir
         self.max_workers = max_workers
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
