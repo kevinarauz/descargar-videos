@@ -30,81 +30,426 @@ default_html = '''
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23667eea'/><stop offset='100%25' stop-color='%23764ba2'/></linearGradient></defs><rect width='32' height='32' rx='6' fill='url(%23bg)'/><rect x='6' y='9' width='20' height='14' rx='2' fill='white' fill-opacity='0.95'/><rect x='7.5' y='10.5' width='17' height='11' rx='1' fill='%23212529'/><polygon points='12.5,14.5 18,17 12.5,19.5' fill='%23667eea'/><circle cx='24' cy='24' r='6' fill='%2328a745'/><path d='M21,24 L23,26 L27,22' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' fill='none'/></svg>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: #fff; }
-        .sidebar { background: #222; min-height: 100vh; padding: 2rem 1rem; }
-        .sidebar h3 { color: #fff; }
-        .sidebar ul { list-style: none; padding: 0; }
-        .sidebar li { margin-bottom: 0.7rem; }
-        .sidebar a { color: #90caf9; text-decoration: none; }
-        .sidebar a:hover { text-decoration: underline; }
-        .main { padding: 2rem; }
-        .credit { margin-top: 2rem; font-size: 0.9rem; color: #ccc; text-align: center; }
-        .descarga-item { 
-            background: rgba(255,255,255,0.1); 
-            padding: 1rem; 
-            margin-bottom: 1rem; 
-            border-radius: 0.5rem; 
-            border-left: 4px solid #007bff;
+        /* Variables CSS para consistencia */
+        :root {
+            --primary-color: #667eea;
+            --primary-dark: #5a67d8;
+            --secondary-color: #764ba2;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --error-color: #dc3545;
+            --info-color: #17a2b8;
+            --dark-color: #212529;
+            --light-color: #f8f9fa;
+            --border-radius: 0.75rem;
+            --border-radius-sm: 0.5rem;
+            --box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --box-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .descarga-cancelled { border-left-color: #ffc107 !important; }
-        .descarga-error { border-left-color: #dc3545 !important; }
-        .descarga-done { border-left-color: #28a745 !important; }
+
+        /* Diseño base mejorado */
+        body { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: #fff; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* Sidebar moderna con glassmorphism */
+        .sidebar { 
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(255, 255, 255, 0.2);
+            min-height: 100vh; 
+            padding: 2rem 1.5rem;
+            box-shadow: var(--box-shadow-lg);
+        }
+        
+        .sidebar h3 { 
+            color: #fff; 
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            font-size: 1.25rem;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 0.5rem;
+        }
+        
+        .sidebar ul { list-style: none; padding: 0; margin: 0; }
+        
+        .sidebar li { 
+            background: rgba(255, 255, 255, 0.08);
+            padding: 1rem;
+            border-radius: var(--border-radius-sm);
+            margin-bottom: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .sidebar li:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+            box-shadow: var(--box-shadow);
+        }
+        
+        .sidebar a { 
+            color: #e2e8f0; 
+            text-decoration: none; 
+            font-weight: 500;
+            display: block;
+        }
+        
+        .sidebar a:hover { 
+            color: #fff;
+            text-decoration: none;
+        }
+
+        /* Área principal con mejor espaciado */
+        .main { 
+            padding: 2.5rem; 
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: var(--border-radius) 0 0 var(--border-radius);
+            margin-left: -15px;
+        }
+
+        /* Títulos con mejor jerarquía */
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            background: linear-gradient(135deg, #fff 0%, #e2e8f0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Formulario mejorado */
+        .form-container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 2rem;
+            box-shadow: var(--box-shadow);
+        }
+
+        .form-control {
+            background: rgba(255, 255, 255, 0.9) !important;
+            border: 2px solid transparent !important;
+            border-radius: var(--border-radius-sm) !important;
+            padding: 0.75rem 1rem !important;
+            font-size: 1rem !important;
+            transition: var(--transition) !important;
+            color: var(--dark-color) !important;
+        }
+
+        .form-control:focus {
+            background: rgba(255, 255, 255, 1) !important;
+            border-color: var(--primary-color) !important;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+            transform: translateY(-1px);
+        }
+
+        .form-control::placeholder {
+            color: #6b7280 !important;
+            opacity: 1 !important;
+        }
+
+        /* Botones modernos */
+        .btn {
+            border-radius: var(--border-radius-sm) !important;
+            padding: 0.75rem 1.5rem !important;
+            font-weight: 600 !important;
+            transition: var(--transition) !important;
+            border: none !important;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--box-shadow);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%) !important;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--success-color) 0%, #22c55e 100%) !important;
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, var(--info-color) 0%, #06b6d4 100%) !important;
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning-color) 0%, #f59e0b 100%) !important;
+            color: var(--dark-color) !important;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, var(--error-color) 0%, #ef4444 100%) !important;
+        }
+
+        /* Cards para descargas */
+        .descarga-item { 
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1.5rem; 
+            margin-bottom: 1rem; 
+            border-radius: var(--border-radius);
+            border-left: 4px solid var(--primary-color);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .descarga-item:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--box-shadow-lg);
+        }
+
+        .descarga-cancelled { border-left-color: var(--warning-color) !important; }
+        .descarga-error { border-left-color: var(--error-color) !important; }
+        .descarga-done { border-left-color: var(--success-color) !important; }
+
+        /* Video container mejorado */
+        #video-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: var(--border-radius);
+            padding: 1rem;
+            margin-top: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
         #video-container video {
-            width: 600px !important;
-            height: 400px !important;
-            max-width: 100% !important;
+            width: 100% !important;
+            max-width: 800px !important;
+            height: auto !important;
+            aspect-ratio: 16/9 !important;
             object-fit: contain !important;
             background-color: #000 !important;
+            border-radius: var(--border-radius-sm) !important;
+            box-shadow: var(--box-shadow);
         }
-        .sidebar li {
-            background: rgba(255,255,255,0.05);
-            padding: 0.5rem;
-            border-radius: 0.3rem;
-            margin-bottom: 0.5rem !important;
-        }
-        .sidebar li:hover {
-            background: rgba(255,255,255,0.1);
-        }
+
+        /* Indicadores de estado mejorados */
         .status-indicator {
             display: inline-block;
-            width: 10px;
-            height: 10px;
+            width: 12px;
+            height: 12px;
             border-radius: 50%;
-            margin-right: 0.5rem;
+            margin-right: 0.75rem;
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
+            animation: pulse 2s infinite;
         }
-        .status-downloading { background-color: #007bff; }
-        .status-done { background-color: #28a745; }
-        .status-error { background-color: #dc3545; }
-        .status-cancelled { background-color: #ffc107; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .status-downloading { background-color: var(--primary-color); }
+        .status-done { background-color: var(--success-color); animation: none; }
+        .status-error { background-color: var(--error-color); animation: none; }
+        .status-cancelled { background-color: var(--warning-color); animation: none; }
+
+        /* Estadísticas mejoradas */
         .download-stats {
-            font-size: 0.8rem;
-            color: #ccc;
-            margin-top: 0.25rem;
+            font-size: 0.875rem;
+            color: #cbd5e0;
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: var(--border-radius-sm);
+            border-left: 3px solid var(--info-color);
         }
+
+        /* Progress bar moderna */
+        .progress {
+            height: 8px !important;
+            background: rgba(255, 255, 255, 0.2) !important;
+            border-radius: 4px !important;
+            overflow: hidden;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, var(--primary-color) 0%, var(--secondary-color) 100%) !important;
+            transition: width 0.3s ease !important;
+            position: relative;
+        }
+
+        .progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        /* URLs mejoradas */
+        .url-metadata {
+            color: #a7f3d0 !important;
+            background: rgba(16, 185, 129, 0.1) !important;
+            padding: 0.5rem 0.75rem !important;
+            border-radius: var(--border-radius-sm) !important;
+            display: inline-block !important;
+            margin-top: 0.5rem !important;
+            border: 1px solid rgba(16, 185, 129, 0.2) !important;
+            font-family: 'Courier New', monospace !important;
+        }
+
+        .url-display {
+            color: #e2e8f0 !important;
+            background: rgba(15, 23, 42, 0.3) !important;
+            padding: 0.75rem 1rem !important;
+            border-radius: var(--border-radius-sm) !important;
+            border-left: 4px solid var(--info-color) !important;
+            margin: 0.75rem 0 !important;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+        }
+
+        /* Texto responsive */
         .text-break {
             word-break: break-all;
-            font-family: monospace;
-            font-size: 0.85em;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            line-height: 1.4;
         }
-        .descarga-item .text-muted {
-            max-height: 3em;
+
+        /* Footer mejorado */
+        .credit { 
+            margin-top: 3rem; 
+            font-size: 0.9rem; 
+            color: rgba(255, 255, 255, 0.7); 
+            text-align: center;
+            padding: 1.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: var(--border-radius);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .credit a {
+            color: #fbbf24;
+            text-decoration: none;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .credit a:hover {
+            color: #f59e0b;
+            text-decoration: underline;
+        }
+
+        /* Botones pequeños mejorados */
+        .btn-sm {
+            padding: 0.5rem 0.75rem !important;
+            font-size: 0.875rem !important;
+            border-radius: var(--border-radius-sm) !important;
+            min-width: 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .main {
+                padding: 1.5rem;
+                margin-left: 0;
+                border-radius: 0;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .form-container {
+                padding: 1.5rem;
+            }
+            
+            .sidebar {
+                padding: 1rem;
+            }
+            
+            #video-container video {
+                max-width: 100% !important;
+            }
+        }
+
+        /* Loading states */
+        .loading {
+            position: relative;
             overflow: hidden;
-            text-overflow: ellipsis;
         }
-        .url-metadata {
-            color: #b8e6b8 !important;
-            background: rgba(255,255,255,0.05);
-            padding: 0.2rem 0.4rem;
-            border-radius: 0.25rem;
-            display: inline-block;
-            margin-top: 0.25rem;
+
+        .loading::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            animation: loading 1.5s infinite;
         }
-        .url-display {
-            color: #ddd !important;
-            background: rgba(255,255,255,0.08);
-            padding: 0.3rem 0.5rem;
-            border-radius: 0.3rem;
-            border-left: 3px solid #17a2b8;
+
+        @keyframes loading {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        /* Tooltip styles */
+        [title]:hover {
+            position: relative;
+        }
+
+        /* Focus states para accesibilidad */
+        .btn:focus,
+        .form-control:focus {
+            outline: 2px solid var(--primary-color);
+            outline-offset: 2px;
+        }
+
+        /* Animaciones suaves */
+        * {
+            transition: var(--transition);
+        }
+
+        /* Scrollbar personalizada */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
         }
     </style>
 </head>
@@ -161,16 +506,44 @@ default_html = '''
       <div id="descargas-activas"></div>
     </nav>
     <main class="col-md-9 main">
-      <h1>Descargar y reproducir M3U8</h1>
-      <form id="descargar-form" class="mb-4">
-        <input type="text" name="m3u8_url" id="m3u8-url" class="form-control mb-2" placeholder="Pega aquí la URL M3U8..." value="{{ url }}">
-        <input type="text" name="output_name" id="output-name" class="form-control mb-2" placeholder="Nombre del archivo MP4 (opcional)">
-        <button type="button" class="btn btn-info me-2" onclick="playM3U8()">Reproducir</button>
-        <button type="submit" class="btn btn-success">Descargar MP4</button>
-      </form>
+      <h1>Descargador M3U8 Profesional</h1>
+      <div class="form-container">
+        <form id="descargar-form" class="mb-0">
+          <div class="mb-3">
+            <label for="m3u8-url" class="form-label fw-semibold">URL del video M3U8</label>
+            <input type="text" name="m3u8_url" id="m3u8-url" class="form-control" placeholder="https://ejemplo.com/video.m3u8" value="{{ url }}" required>
+            <div class="form-text text-light opacity-75">Pega aquí la URL del archivo M3U8 que deseas descargar</div>
+          </div>
+          <div class="mb-4">
+            <label for="output-name" class="form-label fw-semibold">Nombre del archivo (opcional)</label>
+            <input type="text" name="output_name" id="output-name" class="form-control" placeholder="mi-video">
+            <div class="form-text text-light opacity-75">Sin extensión .mp4 - se añadirá automáticamente</div>
+          </div>
+          <div class="d-flex gap-3 flex-wrap">
+            <button type="button" class="btn btn-info d-flex align-items-center gap-2" onclick="playM3U8()">
+              <span>▶️</span> Vista Previa
+            </button>
+            <button type="submit" class="btn btn-success d-flex align-items-center gap-2">
+              <span>⬇️</span> Descargar MP4
+            </button>
+          </div>
+        </form>
+      </div>
       <div id="video-container"></div>
       <div id="progreso" class="mt-4"></div>
-      <div class="credit">Desarrollado con <a href="https://github.com/video-dev/hls.js/" target="_blank" style="color:#fff;text-decoration:underline;">hls.js</a> + Flask + Python + Bootstrap</div>
+      <div class="credit">
+        <div class="d-flex flex-column align-items-center gap-2">
+          <div class="fw-semibold">🎬 Descargador M3U8 Profesional</div>
+          <div class="small">
+            Desarrollado con 
+            <a href="https://github.com/video-dev/hls.js/" target="_blank">hls.js</a> • 
+            <a href="https://flask.palletsprojects.com/" target="_blank">Flask</a> • 
+            <a href="https://getbootstrap.com/" target="_blank">Bootstrap</a> • 
+            <a href="https://ffmpeg.org/" target="_blank">FFmpeg</a>
+          </div>
+          <div class="small opacity-75">Versión 2.0 - Interfaz moderna con principios UI/UX</div>
+        </div>
+      </div>
     </main>
   </div>
 </div>
