@@ -2598,6 +2598,32 @@ def eliminar_archivo(filename):
     except Exception as e:
         return jsonify({'success': False, 'error': f'Error al eliminar el archivo: {str(e)}'}), 500
 
+@app.route('/eliminar_descarga/<download_id>', methods=['DELETE'])
+def eliminar_descarga_activa(download_id):
+    """Elimina una descarga activa del registro de progreso"""
+    try:
+        if download_id not in multi_progress:
+            return jsonify({'success': False, 'error': 'ID de descarga no encontrado.'}), 404
+        
+        # Cancelar primero si está activa
+        if multi_progress[download_id]['status'] == 'downloading':
+            cancelled_downloads.add(download_id)
+            multi_progress[download_id]['status'] = 'cancelled'
+        
+        # Remover del registro de progreso
+        del multi_progress[download_id]
+        
+        # Remover de cancelaciones si existe
+        cancelled_downloads.discard(download_id)
+        
+        # Guardar estado
+        save_download_state()
+        
+        return jsonify({'success': True, 'message': 'Descarga eliminada del registro.'}), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error al eliminar descarga: {str(e)}'}), 500
+
 @app.route('/reanudar/<download_id>', methods=['POST'])
 def reanudar_descarga(download_id):
     """Reanuda una descarga pausada o con error"""
