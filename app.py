@@ -1554,6 +1554,8 @@ function downloadWithMetadata() {
     // Simular envío del formulario
     document.getElementById('descargar-form').dispatchEvent(new Event('submit'));
 }
+
+function playM3U8() {
     const url = document.getElementById('m3u8-url').value.trim();
     const container = document.getElementById('video-container');
     container.innerHTML = '';
@@ -1561,6 +1563,7 @@ function downloadWithMetadata() {
         container.innerHTML = '<p>Por favor ingresa una URL M3U8 válida.</p>';
         return;
     }
+    
     const video = document.createElement('video');
     video.controls = true;
     video.autoplay = true;
@@ -1571,6 +1574,7 @@ function downloadWithMetadata() {
     video.style.objectFit = 'contain';
     video.style.backgroundColor = '#000';
     container.appendChild(video);
+    
     if (Hls.isSupported()) {
         const hls = new Hls();
         hls.loadSource(url);
