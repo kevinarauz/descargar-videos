@@ -49,6 +49,13 @@ default_html = '''
         .descarga-cancelled { border-left-color: #ffc107 !important; }
         .descarga-error { border-left-color: #dc3545 !important; }
         .descarga-done { border-left-color: #28a745 !important; }
+        #video-container video {
+            width: 600px !important;
+            height: 400px !important;
+            max-width: 100% !important;
+            object-fit: contain !important;
+            background-color: #000 !important;
+        }
     </style>
 </head>
 <body>
@@ -98,6 +105,11 @@ function playM3U8() {
     video.controls = true;
     video.autoplay = true;
     video.style.marginTop = '1rem';
+    video.style.width = '600px';
+    video.style.height = '400px';
+    video.style.maxWidth = '100%';
+    video.style.objectFit = 'contain';
+    video.style.backgroundColor = '#000';
     container.appendChild(video);
     if (Hls.isSupported()) {
         const hls = new Hls();
