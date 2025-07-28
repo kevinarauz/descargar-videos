@@ -132,7 +132,7 @@ class M3U8Downloader:
 
 # --- Ejemplo de Uso ---
 if __name__ == '__main__':
-    M3U8_FILE_URL = "https://v8.lj20250710new.com/20250725/rloz6vaQ/index.m3u8"
+    M3U8_FILE_URL = "https://example.com/path/to/your/video.m3u8"
     OUTPUT_FILE = "video_descargado.mp4"
 
     downloader = M3U8Downloader(m3u8_url=M3U8_FILE_URL, output_filename=OUTPUT_FILE, max_workers=20)

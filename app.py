@@ -85,6 +85,11 @@ default_html = '''
             font-family: monospace;
             font-size: 0.85em;
         }
+        .descarga-item .text-muted {
+            max-height: 3em;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
     </style>
 </head>
 <body>
@@ -109,11 +114,23 @@ default_html = '''
               <a href="/static/{{item.archivo}}" download class="text-truncate d-block">{{item.archivo}}</a>
               <div class="download-stats">
                 📦 {{item.tamaño}} • 📅 {{item.fecha}}
+                {% if item.url %}
+                <br><small class="text-muted">
+                  🔗 <span class="text-break" style="font-size: 0.7em;">{{item.url}}</span>
+                </small>
+                {% endif %}
               </div>
             </div>
-            <button class="btn btn-outline-danger btn-sm" onclick="eliminarArchivo('{{item.archivo}}')" title="Eliminar archivo">
-              🗑️
-            </button>
+            <div class="d-flex flex-column">
+              {% if item.url %}
+              <button class="btn btn-outline-info btn-sm mb-1" onclick="copiarUrl('{{item.url}}')" title="Copiar URL al portapapeles">
+                📋
+              </button>
+              {% endif %}
+              <button class="btn btn-outline-danger btn-sm" onclick="eliminarArchivo('{{item.archivo}}')" title="Eliminar archivo">
+                🗑️
+              </button>
+            </div>
           </li>
         {% endfor %}
         </ul>
@@ -189,11 +206,13 @@ document.getElementById('descargar-form').addEventListener('submit', function(e)
         body: params
     }).then(r => r.json()).then(data => {
         if (data.download_id) {
-            mostrarDescargaActiva(data.download_id);
+            // Obtener la URL del formulario para pasarla a la descarga activa
+            let url = document.getElementById('m3u8-url').value.trim();
+            mostrarDescargaActiva(data.download_id, url);
         }
     });
 });
-function mostrarDescargaActiva(download_id) {
+function mostrarDescargaActiva(download_id, url) {
     let div = document.getElementById('descargas-activas');
     let barra = document.createElement('div');
     barra.id = 'descarga-' + download_id;
@@ -206,6 +225,9 @@ function mostrarDescargaActiva(download_id) {
         <div class="download-stats" id="stats-${download_id}">
             Inicializando...
         </div>
+        <div class='mt-2 text-muted small' id="url-${download_id}">
+            <strong>URL:</strong> <span class="text-break">${url || 'N/A'}</span>
+        </div>
         <div>Progreso: <span id='progreso-${download_id}'>0%</span></div>
         <div class='progress mb-2'>
             <div class='progress-bar' id='bar-${download_id}' role='progressbar' style='width:0%'></div>
@@ -213,6 +235,18 @@ function mostrarDescargaActiva(download_id) {
         <div>
             <button class='btn btn-danger btn-sm' id='cancel-btn-${download_id}' onclick='cancelarDescarga("${download_id}")'>Cancelar</button>
         </div>`;
+    
+    // Agregar botón de copiar URL si existe
+    if (url) {
+        let urlDiv = barra.querySelector(`#url-${download_id}`);
+        let copyBtn = document.createElement('button');
+        copyBtn.className = 'btn btn-outline-info btn-sm ms-2';
+        copyBtn.innerHTML = '📋';
+        copyBtn.title = 'Copiar URL';
+        copyBtn.onclick = () => copiarUrl(url);
+        urlDiv.appendChild(copyBtn);
+    }
+    
     div.appendChild(barra);
     actualizarProgreso(download_id);
 }
@@ -387,7 +421,7 @@ function reintentarDescarga(download_id) {
                         body: params
                     }).then(r => r.json()).then(newData => {
                         if (newData.download_id) {
-                            mostrarDescargaActiva(newData.download_id);
+                            mostrarDescargaActiva(newData.download_id, data.url);
                         } else if (newData.error) {
                             alert('Error al reintentar: ' + newData.error);
                         }
@@ -403,6 +437,46 @@ function reintentarDescarga(download_id) {
         alert('Error al obtener datos de la descarga: ' + error.message);
     });
 }
+function copiarUrl(url) {
+    if (navigator.clipboard && window.isSecureContext) {
+        // Usar la API moderna del portapapeles
+        navigator.clipboard.writeText(url).then(function() {
+            // Mostrar confirmación temporal
+            let button = event.target;
+            let originalText = button.innerHTML;
+            button.innerHTML = '✅';
+            button.disabled = true;
+            setTimeout(function() {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }, 1500);
+        }).catch(function(err) {
+            // Fallback si falla la API moderna
+            copiarUrlFallback(url);
+        });
+    } else {
+        // Fallback para navegadores más antiguos
+        copiarUrlFallback(url);
+    }
+}
+function copiarUrlFallback(url) {
+    // Crear un elemento temporal para copiar
+    let textArea = document.createElement('textarea');
+    textArea.value = url;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.select();
+    
+    try {
+        document.execCommand('copy');
+        alert('URL copiada al portapapeles');
+    } catch (err) {
+        alert('No se pudo copiar la URL. Cópiala manualmente: ' + url);
+    }
+    
+    document.body.removeChild(textArea);
+}
 </script>
 </body>
 </html>
@@ -416,10 +490,14 @@ def index():
     archivos = []
     if os.path.exists(static_dir):
         for f in glob.glob(os.path.join(static_dir, '*.mp4')):
+            filename = os.path.basename(f)
+            metadata = load_video_metadata(filename)
+            
             archivo_info = {
-                'archivo': os.path.basename(f),
+                'archivo': filename,
                 'tamaño': format_file_size(os.path.getsize(f)),
-                'fecha': format_modification_time(os.path.getmtime(f))
+                'fecha': format_modification_time(os.path.getmtime(f)),
+                'url': metadata['url'] if metadata and 'url' in metadata else None
             }
             archivos.append(archivo_info)
         # Ordenar por fecha de modificación (más reciente primero)
@@ -504,6 +582,42 @@ def periodic_cleanup():
 
 # Iniciar limpieza periódica al inicio
 periodic_cleanup()
+
+def save_video_metadata(filename, url):
+    """Guarda metadatos del video en un archivo JSON"""
+    import json
+    import datetime
+    
+    static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
+    metadata_file = os.path.join(static_dir, f"{filename}.meta")
+    
+    metadata = {
+        'url': url,
+        'download_date': datetime.datetime.now().isoformat(),
+        'filename': filename
+    }
+    
+    try:
+        with open(metadata_file, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Error al guardar metadatos para {filename}: {e}")
+
+def load_video_metadata(filename):
+    """Carga metadatos del video desde el archivo JSON"""
+    import json
+    
+    static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
+    metadata_file = os.path.join(static_dir, f"{filename}.meta")
+    
+    if os.path.exists(metadata_file):
+        try:
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error al leer metadatos para {filename}: {e}")
+    
+    return None
 
 @app.route('/descargar', methods=['POST'])
 def descargar():
@@ -615,6 +729,12 @@ def descargar():
                     os.replace(output_path, static_path)
                     multi_progress[download_id]['status'] = 'done'
                     multi_progress[download_id]['end_time'] = time.time()
+                    
+                    # Guardar metadatos del video (URL y fecha de descarga)
+                    try:
+                        save_video_metadata(output_file, m3u8_url)
+                    except Exception as meta_error:
+                        print(f"Error al guardar metadatos: {meta_error}")
                 else:
                     multi_progress[download_id]['status'] = 'error'
                     multi_progress[download_id]['error'] = 'No se pudo descargar el video o el archivo está vacío.'
@@ -677,6 +797,15 @@ def eliminar_archivo(filename):
         
         # Eliminar el archivo
         os.remove(file_path)
+        
+        # También eliminar el archivo de metadatos si existe
+        metadata_file = os.path.join(static_dir, f"{filename}.meta")
+        if os.path.exists(metadata_file):
+            try:
+                os.remove(metadata_file)
+            except Exception as meta_error:
+                print(f"Error al eliminar metadatos para {filename}: {meta_error}")
+        
         return jsonify({'success': True, 'message': f'Archivo {filename} eliminado correctamente.'}), 200
         
     except Exception as e:
