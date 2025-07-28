@@ -2928,6 +2928,9 @@ def get_m3u8_metadata():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/active_downloads', methods=['GET'])
+def get_active_downloads():
     """Obtiene todas las descargas activas para cargar al refrescar"""
     try:
         return jsonify({
@@ -2936,6 +2939,9 @@ def get_m3u8_metadata():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/analytics', methods=['GET'])
+def get_analytics():
     """Endpoint para obtener datos analíticos"""
     try:
         static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
