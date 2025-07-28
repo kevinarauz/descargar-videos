@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reproductor M3U8 Online</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: rgba(0,0,0,0.7);
+            padding: 2rem 2.5rem;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            max-width: 420px;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            font-weight: 700;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 0.7rem;
+            border-radius: 8px;
+            border: none;
+            margin-bottom: 1rem;
+            font-size: 1rem;
+        }
+        button {
+            width: 100%;
+            padding: 0.7rem;
+            border-radius: 8px;
+            border: none;
+            background: #2a5298;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #1e3c72;
+        }
+        #video-container {
+            margin-top: 2rem;
+            text-align: center;
+        }
+        video {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 12px;
+            background: #000;
+        }
+        .credit {
+            margin-top: 2rem;
+            font-size: 0.9rem;
+            color: #ccc;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Reproductor M3U8 Online</h1>
+        <input type="text" id="m3u8-url" placeholder="Pega aquí la URL M3U8..." value="https://v8.lj20250710new.com/20250725/rloz6vaQ/index.m3u8">
+        <button onclick="playM3U8()">Reproducir</button>
+        <div id="video-container"></div>
+    </div>
+    <div class="credit">Desarrollado con <a href="https://github.com/video-dev/hls.js/" target="_blank" style="color:#fff;text-decoration:underline;">hls.js</a></div>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        function playM3U8() {
+            const url = document.getElementById('m3u8-url').value.trim();
+            const container = document.getElementById('video-container');
+            container.innerHTML = '';
+            if (!url) {
+                container.innerHTML = '<p>Por favor ingresa una URL M3U8 válida.</p>';
+                return;
+            }
+            const video = document.createElement('video');
+            video.controls = true;
+            video.autoplay = true;
+            video.style.marginTop = '1rem';
+            container.appendChild(video);
+            if (Hls.isSupported()) {
+                const hls = new Hls();
+                hls.loadSource(url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    if (data.fatal) {
+                        container.innerHTML = '<p style="color:#ff8080">Error al cargar el video M3U8.</p>';
+                    }
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url;
+                video.addEventListener('error', function() {
+                    container.innerHTML = '<p style="color:#ff8080">Error al cargar el video M3U8.</p>';
+                });
+            } else {
+                container.innerHTML = '<p>Tu navegador no soporta reproducción M3U8.</p>';
+            }
+        }
+    </script>
+</body>
+</html>
