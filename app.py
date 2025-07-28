@@ -218,34 +218,55 @@ function actualizarProgreso(download_id) {
         let archivo = document.getElementById('archivo-' + download_id);
         let cancelBtn = document.getElementById('cancel-btn-' + download_id);
         let descargaDiv = document.getElementById('descarga-' + download_id);
+        let stats = document.getElementById('stats-' + download_id);
         
         if (data.output_file && archivo) {
-            archivo.innerText = `📥 ${data.output_file}`;
+            archivo.innerHTML = `<span class="status-indicator status-${data.status}"></span>📥 ${data.output_file}`;
         }
+        
+        if (stats && data.total > 0) {
+            let segmentos = `${data.current || 0}/${data.total} segmentos`;
+            if (data.status === 'downloading') {
+                let velocidad = data.current && data.start_time ? 
+                    ((data.current / (Date.now()/1000 - data.start_time)) * 60).toFixed(1) : '0';
+                stats.innerText = `${segmentos} • ~${velocidad} seg/min`;
+            } else {
+                stats.innerText = segmentos;
+            }
+        }
+        
         if (data.status === 'downloading') {
             bar.style.width = data.porcentaje + '%';
             prog.innerText = data.porcentaje + '%';
+            descargaDiv.className = 'descarga-item';
             setTimeout(function() { actualizarProgreso(download_id); }, 1000);
         } else if (data.status === 'done') {
             bar.style.width = '100%';
             prog.innerText = '100%';
-            if (archivo) archivo.innerText = `✅ ${data.output_file}`;
+            if (archivo) archivo.innerHTML = `<span class="status-indicator status-done"></span>✅ ${data.output_file}`;
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-done';
+            if (stats) {
+                let duracion = data.end_time && data.start_time ? 
+                    Math.round(data.end_time - data.start_time) : 0;
+                stats.innerText = `Completado en ${duracion}s`;
+            }
             document.getElementById('descarga-' + download_id).innerHTML += `<div class='mt-2'><a href='/static/${data.output_file}' download class='btn btn-primary btn-sm'>Descargar MP4</a></div>`;
             // Actualizar el historial automáticamente
             setTimeout(function() { 
                 location.reload(); 
             }, 2000);
         } else if (data.status === 'error') {
-            if (archivo) archivo.innerText = `❌ ${data.output_file || 'Error'}`;
+            if (archivo) archivo.innerHTML = `<span class="status-indicator status-error"></span>❌ ${data.output_file || 'Error'}`;
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-error';
+            if (stats) stats.innerText = 'Error en la descarga';
             document.getElementById('descarga-' + download_id).innerHTML += `<div class='mt-2 text-danger'>${data.error}</div>`;
         } else if (data.status === 'cancelled') {
-            if (archivo) archivo.innerText = `🚫 Descarga cancelada`;
+            if (archivo) archivo.innerHTML = `<span class="status-indicator status-cancelled"></span>🚫 Descarga cancelada`;
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-cancelled';
+            if (stats) stats.innerText = 'Cancelado por el usuario';
             document.getElementById('descarga-' + download_id).innerHTML += `<div class='mt-2 text-warning'>Descarga cancelada por el usuario</div>`;
         }
     });
@@ -335,6 +356,50 @@ def get_download_stats():
         'cancelled': cancelled,
         'total': len(multi_progress)
     }
+
+def is_valid_m3u8_url(url):
+    """Valida si la URL es un formato M3U8 válido"""
+    import re
+    pattern = r'^https?://.+\.m3u8(\?.*)?$'
+    return re.match(pattern, url) is not None
+
+def sanitize_filename(filename):
+    """Limpia el nombre del archivo de caracteres no seguros"""
+    return re.sub(r'[^\w\-. ]', '', filename).strip()
+
+def cleanup_old_downloads():
+    """Limpia descargas antiguas del diccionario de progreso"""
+    current_time = time.time()
+    to_remove = []
+    
+    for download_id, progress in multi_progress.items():
+        # Remover descargas completadas o con error después de 1 hora
+        if progress['status'] in ['done', 'error', 'cancelled']:
+            if 'end_time' in progress and current_time - progress['end_time'] > 3600:
+                to_remove.append(download_id)
+            elif 'start_time' in progress and current_time - progress['start_time'] > 7200:
+                to_remove.append(download_id)
+    
+    for download_id in to_remove:
+        del multi_progress[download_id]
+        cancelled_downloads.discard(download_id)
+
+# Llamar cleanup cada vez que se carga la página principal
+def periodic_cleanup():
+    """Ejecuta limpieza periódica en un hilo separado"""
+    import threading
+    import time
+    
+    def cleanup_worker():
+        while True:
+            time.sleep(300)  # 5 minutos
+            cleanup_old_downloads()
+    
+    cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
+    cleanup_thread.start()
+
+# Iniciar limpieza periódica al inicio
+periodic_cleanup()
 
 @app.route('/descargar', methods=['POST'])
 def descargar():
@@ -455,85 +520,6 @@ def descargar():
             # Limpiar el ID de cancelación cuando termine la descarga
             cancelled_downloads.discard(download_id)
     
-    thread = threading.Thread(target=run_download)
-    thread.start()
-    return jsonify({'download_id': download_id}), 202
-
-def is_valid_m3u8_url(url):
-    """Valida si la URL es un formato M3U8 válido"""
-    import re
-    pattern = r'^https?://.+\.m3u8(\?.*)?$'
-    return re.match(pattern, url) is not None
-
-def sanitize_filename(filename):
-    """Limpia el nombre del archivo de caracteres no seguros"""
-    return re.sub(r'[^\w\-. ]', '', filename).strip()
-    def run_download():
-        try:
-            # Verificar si ya fue cancelado antes de empezar
-            if download_id in cancelled_downloads:
-                multi_progress[download_id]['status'] = 'cancelled'
-                return
-                
-            # Usar el directorio temp_segments común (como en el clásico)
-            temp_dir = os.path.join(os.path.dirname(__file__), 'temp_segments')
-            if not os.path.exists(temp_dir):
-                os.makedirs(temp_dir)
-            original_dir = os.getcwd()
-            # Descarga de segmentos en temp_dir común
-            downloader = M3U8Downloader(m3u8_url=m3u8_url, output_filename=output_file, max_workers=20)
-            segment_urls = downloader._get_segment_urls()
-            multi_progress[download_id]['total'] = len(segment_urls)
-            
-            for i, url in enumerate(segment_urls):
-                # Verificar cancelación en cada iteración
-                if download_id in cancelled_downloads:
-                    multi_progress[download_id]['status'] = 'cancelled'
-                    multi_progress[download_id]['error'] = 'Descarga cancelada por el usuario'
-                    return
-                    
-                try:
-                    downloader._download_segment(url, i)
-                    seg_path = os.path.join(temp_dir, f'segment_{i:05d}.ts')
-                    if not os.path.exists(seg_path):
-                        raise FileNotFoundError(f"No se encontró el archivo {seg_path} tras la descarga.")
-                except Exception as err:
-                    multi_progress[download_id]['error'] = f"Error al descargar el segmento {i+1}: {err}"
-                    multi_progress[download_id]['status'] = 'error'
-                    break
-                porcentaje = int(((i + 1) / len(segment_urls)) * 100) if len(segment_urls) > 0 else 0
-                multi_progress[download_id]['current'] = i + 1
-                multi_progress[download_id]['porcentaje'] = porcentaje
-                
-            # Verificar cancelación antes de la fusión
-            if download_id in cancelled_downloads:
-                multi_progress[download_id]['status'] = 'cancelled'
-                multi_progress[download_id]['error'] = 'Descarga cancelada por el usuario'
-                return
-                
-            # Fusión y movimiento del archivo MP4
-            if multi_progress[download_id]['status'] == 'downloading':
-                segment_files = [f'segment_{i:05d}.ts' for i in range(len(segment_urls))]
-                print(f"[DEBUG] Segment files: {segment_files}")
-                downloader._merge_segments(segment_files)
-                static_dir = os.path.join(os.path.dirname(__file__), 'static')
-                if not os.path.exists(static_dir):
-                    os.makedirs(static_dir)
-                static_path = os.path.join(static_dir, output_file)
-                output_path = os.path.abspath(os.path.join(original_dir, output_file))
-                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                    os.replace(output_path, static_path)
-                    multi_progress[download_id]['status'] = 'done'
-                else:
-                    multi_progress[download_id]['status'] = 'error'
-                    multi_progress[download_id]['error'] = 'No se pudo descargar el video o el archivo está vacío.'
-            # No eliminar temp_segments para permitir descargas simultáneas
-        except Exception as e:
-            multi_progress[download_id]['status'] = 'error'
-            multi_progress[download_id]['error'] = str(e)
-        finally:
-            # Limpiar el ID de cancelación cuando termine la descarga
-            cancelled_downloads.discard(download_id)
     thread = threading.Thread(target=run_download)
     thread.start()
     return jsonify({'download_id': download_id}), 202
