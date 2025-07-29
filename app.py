@@ -1017,6 +1017,9 @@ let userConfig = {
     quality: 'auto'
 };
 
+// Objeto para trackear descargas activas para el cálculo de velocidad promedio
+window.activeDownloads = {};
+
 // Cargar configuración del localStorage
 function loadUserConfig() {
     const saved = localStorage.getItem('m3u8_downloader_config');
@@ -1149,6 +1152,9 @@ function reanudarDescarga(download_id) {
             method: 'POST'
         }).then(r => r.json()).then(data => {
             if (data.success) {
+                // Agregar al tracking de descargas activas
+                window.activeDownloads[download_id] = true;
+                
                 showNotification('Descarga reanudada', 'success');
                 // Actualizar la interfaz
                 setTimeout(() => location.reload(), 1000);
@@ -1521,6 +1527,36 @@ function updateDashboardStats() {
     items.forEach(item => {
         totalSize += parseInt(item.dataset.size || 0);
     });
+    
+    // Calcular velocidad promedio de descargas activas
+    let avgSpeed = 0;
+    let activeDownloads = 0;
+    
+    // Obtener velocidades de todas las descargas activas
+    Object.keys(window.activeDownloads || {}).forEach(downloadId => {
+        fetch('/progreso/' + downloadId)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'downloading' && data.download_speed > 0) {
+                    avgSpeed += data.download_speed;
+                    activeDownloads++;
+                    
+                    // Actualizar solo si es la última descarga procesada
+                    if (activeDownloads > 0) {
+                        const finalAvgSpeed = (avgSpeed / activeDownloads).toFixed(2);
+                        document.getElementById('avg-speed').textContent = finalAvgSpeed + ' MB/s';
+                    }
+                }
+            })
+            .catch(() => {
+                // Ignorar errores
+            });
+    });
+    
+    // Si no hay descargas activas, mostrar 0
+    if (Object.keys(window.activeDownloads || {}).length === 0) {
+        document.getElementById('avg-speed').textContent = '0 MB/s';
+    }
     
     // Actualizar interfaz
     document.getElementById('total-downloads').textContent = totalCount;
@@ -2017,6 +2053,9 @@ function mostrarDescargaActiva(download_id, url) {
         return; // No crear duplicado
     }
     
+    // Agregar a tracking de descargas activas para cálculo de velocidad
+    window.activeDownloads[download_id] = true;
+    
     let div = document.getElementById('descargas-activas');
     let barra = document.createElement('div');
     barra.id = 'descarga-' + download_id;
@@ -2039,6 +2078,12 @@ function mostrarDescargaActiva(download_id, url) {
     statsDiv.className = 'download-stats';
     statsDiv.id = 'stats-' + download_id;
     statsDiv.textContent = 'Inicializando...';
+    
+    // Speed div - mostrar velocidad de descarga
+    const speedDiv = document.createElement('div');
+    speedDiv.className = 'download-speed small text-info';
+    speedDiv.id = 'speed-' + download_id;
+    speedDiv.innerHTML = '<strong>Velocidad:</strong> <span>Calculando...</span>';
     
     // URL div
     const urlDiv = document.createElement('div');
@@ -2104,6 +2149,7 @@ function mostrarDescargaActiva(download_id, url) {
     // Agregar todo al contenedor principal
     barra.appendChild(titleDiv);
     barra.appendChild(statsDiv);
+    barra.appendChild(speedDiv);
     barra.appendChild(urlDiv);
     barra.appendChild(progressTextDiv);
     barra.appendChild(progressDiv);
@@ -2172,6 +2218,7 @@ function actualizarProgreso(download_id) {
         let cancelBtn = document.getElementById('cancel-btn-' + download_id);
         let descargaDiv = document.getElementById('descarga-' + download_id);
         let stats = document.getElementById('stats-' + download_id);
+        let speedElement = document.getElementById('speed-' + download_id);
         
         if (data.output_file && archivo) {
             archivo.innerHTML = '<span class="status-indicator status-' + data.status + '"></span>Descargando: ' + data.output_file;
@@ -2180,12 +2227,35 @@ function actualizarProgreso(download_id) {
         if (stats && data.total > 0) {
             let segmentos = (data.current || 0) + '/' + data.total + ' segmentos';
             if (data.status === 'downloading') {
-                let velocidad = data.current && data.start_time ? 
-                    ((data.current / (Date.now()/1000 - data.start_time)) * 60).toFixed(1) : '0';
-                stats.innerText = segmentos + ' • ~' + velocidad + ' seg/min';
+                let velocidadTexto = '';
+                
+                // Mostrar velocidad en MB/s si está disponible
+                if (data.download_speed && data.download_speed > 0) {
+                    velocidadTexto = data.download_speed.toFixed(2) + ' MB/s';
+                } else {
+                    // Fallback a segmentos por minuto
+                    let velocidad = data.current && data.start_time ? 
+                        ((data.current / (Date.now()/1000 - data.start_time)) * 60).toFixed(1) : '0';
+                    velocidadTexto = velocidad + ' seg/min';
+                }
+                
+                stats.innerText = segmentos + ' • ' + velocidadTexto;
             } else {
                 stats.innerText = segmentos;
             }
+        }
+        
+        // Actualizar elemento de velocidad separado
+        if (speedElement && data.status === 'downloading') {
+            if (data.download_speed && data.download_speed > 0) {
+                const speedMBs = data.download_speed.toFixed(2);
+                const speedKBs = (data.download_speed * 1024).toFixed(0);
+                speedElement.innerHTML = `<strong>Velocidad:</strong> <span class="text-primary">${speedMBs} MB/s (${speedKBs} KB/s)</span>`;
+            } else {
+                speedElement.innerHTML = '<strong>Velocidad:</strong> <span class="text-muted">Calculando...</span>';
+            }
+        } else if (speedElement) {
+            speedElement.innerHTML = '<strong>Velocidad:</strong> <span class="text-muted">-</span>';
         }
         
         if (data.status === 'downloading') {
@@ -2204,6 +2274,9 @@ function actualizarProgreso(download_id) {
             
             setTimeout(function() { actualizarProgreso(download_id); }, 1000);
         } else if (data.status === 'done') {
+            // Remover del tracking de descargas activas
+            delete window.activeDownloads[download_id];
+            
             if (bar) bar.style.width = '100%';
             if (prog) prog.innerText = '100%';
             if (archivo) archivo.innerHTML = '<span class="status-indicator status-done"></span>Completado: ' + data.output_file;
@@ -2250,6 +2323,9 @@ function actualizarProgreso(download_id) {
                 location.reload(); 
             }, 3000);
         } else if (data.status === 'error') {
+            // Remover del tracking de descargas activas
+            delete window.activeDownloads[download_id];
+            
             if (archivo) archivo.innerHTML = '<span class="status-indicator status-error"></span>Error: ' + (data.output_file || 'Error');
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-error';
@@ -2294,6 +2370,9 @@ function actualizarProgreso(download_id) {
                 showNotification('Error en descarga: ' + data.error, 'danger');
             }
         } else if (data.status === 'cancelled') {
+            // Remover del tracking de descargas activas
+            delete window.activeDownloads[download_id];
+            
             if (archivo) archivo.innerHTML = '<span class="status-indicator status-cancelled"></span>Descarga cancelada';
             if (descargaDiv) descargaDiv.className = 'descarga-item descarga-cancelled';
             if (stats) stats.innerText = 'Cancelado por el usuario';
@@ -3126,7 +3205,11 @@ def descargar():
             'quality': quality,
             'start_time': time.time(),
             'can_resume': False,
-            'downloaded_segments': []
+            'downloaded_segments': [],
+            'bytes_downloaded': 0,
+            'download_speed': 0,  # MB/s
+            'last_update_time': time.time(),
+            'last_bytes': 0
         }
     
     def run_download():
@@ -3174,10 +3257,40 @@ def descargar():
                     continue
                     
                 try:
-                    downloader._download_segment(url, i)
+                    # Obtener tiempo antes de la descarga
+                    segment_start_time = time.time()
+                    
+                    # Descargar segmento y obtener tamaño
+                    segment_name, bytes_downloaded = downloader._download_segment(url, i)
+                    
+                    if not segment_name:
+                        raise Exception("No se pudo descargar el segmento")
+                    
                     seg_path = os.path.join(temp_dir, f'segment_{i:05d}.ts')
                     if not os.path.exists(seg_path):
                         raise FileNotFoundError(f"No se encontró el archivo {seg_path} tras la descarga.")
+                    
+                    # Calcular velocidad de descarga
+                    current_time = time.time()
+                    time_diff = current_time - multi_progress[download_id]['last_update_time']
+                    
+                    if time_diff > 0:
+                        # Actualizar bytes totales descargados
+                        multi_progress[download_id]['bytes_downloaded'] += bytes_downloaded
+                        
+                        # Calcular velocidad en MB/s
+                        bytes_per_second = bytes_downloaded / (current_time - segment_start_time)
+                        speed_mbps = bytes_per_second / (1024 * 1024)  # Convertir a MB/s
+                        
+                        # Usar promedio móvil para suavizar la velocidad
+                        current_speed = multi_progress[download_id]['download_speed']
+                        if current_speed == 0:
+                            multi_progress[download_id]['download_speed'] = speed_mbps
+                        else:
+                            # Promedio móvil con factor 0.3 para suavizar
+                            multi_progress[download_id]['download_speed'] = (current_speed * 0.7) + (speed_mbps * 0.3)
+                        
+                        multi_progress[download_id]['last_update_time'] = current_time
                     
                     # Marcar segmento como descargado
                     multi_progress[download_id]['downloaded_segments'].append(i)
