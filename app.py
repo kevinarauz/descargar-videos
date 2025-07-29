@@ -846,6 +846,19 @@ default_html = '''
               <span style="color:#ccc">No hay descargas aún.</span>
             {% endif %}
           </div>
+          
+          <!-- Botones de debug -->
+          <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-outline-warning btn-sm" onclick="debugHistorial()" title="Debug del historial">
+              🐛 Debug Historial
+            </button>
+            <button class="btn btn-outline-info btn-sm" onclick="testApiHistorial()" title="Probar API del historial">
+              🔧 Test API
+            </button>
+            <button class="btn btn-outline-success btn-sm" onclick="forceRefreshHistorial()" title="Forzar actualización">
+              🔄 Refrescar
+            </button>
+          </div>
         </div>
 
         <!-- Pestaña de Descargas Activas -->
@@ -1714,10 +1727,15 @@ function loadActiveDownloads() {
 
 // Función para actualizar el historial dinámicamente
 function updateHistorial() {
+    console.log('🔄 Actualizando historial...');
     fetch('/api/historial')
         .then(r => r.json())
         .then(data => {
+            console.log('📥 Respuesta del historial:', data);
+            
             if (data.success && data.historial) {
+                console.log(`📊 Procesando ${data.historial.length} archivos en historial`);
+                
                 const historialContainer = document.getElementById('historial-container');
                 
                 if (data.historial.length === 0) {
@@ -1725,7 +1743,163 @@ function updateHistorial() {
                 } else {
                     let html = '<ul id="historial-list">';
                     
-                    data.historial.forEach(item => {
+                    data.historial.forEach((item, index) => {
+                        console.log(`📄 Archivo ${index + 1}: ${item.archivo} - URL: ${item.url ? '✅' : '❌'}`);
+                        if (item.url) {
+                            console.log(`   🌐 URL: ${item.url}`);
+                        }
+                        
+                        html += '<li class="d-flex justify-content-between align-items-center mb-2 historial-item" ' +
+                               'data-filename="' + item.archivo.toLowerCase() + '" ' +
+                               'data-date="' + (item.fecha_timestamp || 0) + '" ' +
+                               'data-size="' + (item.tamaño_bytes || 0) + '">' +
+                               '<div class="flex-grow-1 me-2">' +
+                               '<a href="/static/' + item.archivo + '" download class="text-truncate d-block">' + item.archivo + '</a>' +
+                               '<div class="download-stats">' +
+                               item.tamaño + ' • ' + item.fecha;
+                        
+                        if (item.url) {
+                            console.log(`   ➕ Agregando URL al HTML para ${item.archivo}`);
+                            html += '<br><small class="url-metadata">' +
+                                   '<span class="text-break" style="font-size: 0.75em;">🔗 ' + item.url + '</span>' +
+                                   '</small>';
+                        } else {
+                            console.log(`   ⚠️ URL faltante para ${item.archivo}`);
+                        }
+                        
+                        html += '</div></div>' +
+                               '<div class="btn-group-vertical" role="group">' +
+                               '<button class="btn btn-outline-info btn-sm mb-1" data-url="' + (item.url || '') + '" onclick="copiarUrlFromData(this)" title="Copiar URL al portapapeles">' +
+                               'Copiar' +
+                               '</button>' +
+                               '<button class="btn btn-outline-success btn-sm mb-1" data-url="' + (item.url || '') + '" onclick="reproducirUrlFromData(this)" title="Reproducir video">' +
+                               'Play' +
+                               '</button>' +
+                               '<button class="btn btn-outline-warning btn-sm mb-1" data-filename="' + item.archivo.replace(/"/g, '&quot;') + '" onclick="renombrarArchivoFromData(this)" title="Renombrar archivo">' +
+                               'Renombrar' +
+                               '</button>' +
+                               '<button class="btn btn-outline-danger btn-sm" data-filename="' + item.archivo.replace(/"/g, '&quot;') + '" onclick="eliminarArchivoFromData(this)" title="Eliminar archivo">' +
+                               'Eliminar' +
+                               '</button>' +
+                               '</div></li>';
+                    });
+                    
+                    html += '</ul>';
+                    historialContainer.innerHTML = html;
+                    console.log('✅ HTML del historial actualizado');
+                }
+                
+                // Actualizar contador de descargas totales
+                const totalElement = document.getElementById('total-downloads');
+                if (totalElement) {
+                    totalElement.textContent = data.historial.length;
+                    console.log(`📊 Contador actualizado: ${data.historial.length} descargas`);
+                }
+            } else {
+                console.error('❌ Error en respuesta del historial:', data);
+            }
+        })
+        .catch(error => {
+            console.error('Error actualizando historial:', error);
+        });
+}
+
+// Funciones de debug para el historial
+function debugHistorial() {
+    console.log('🐛 DEBUG: Iniciando análisis del historial...');
+    
+    // Verificar elementos del DOM
+    const historialContainer = document.getElementById('historial-container');
+    console.log('📋 Contenedor del historial:', historialContainer);
+    console.log('📄 Contenido actual:', historialContainer ? historialContainer.innerHTML.substring(0, 200) + '...' : 'NO ENCONTRADO');
+    
+    // Verificar elementos con URL
+    const urlElements = document.querySelectorAll('.url-metadata');
+    console.log(`🔗 Elementos con URL encontrados: ${urlElements.length}`);
+    urlElements.forEach((el, i) => {
+        console.log(`   🌐 URL ${i + 1}: ${el.textContent}`);
+    });
+    
+    // Verificar botones con data-url
+    const urlButtons = document.querySelectorAll('button[data-url]');
+    console.log(`🔘 Botones con data-url: ${urlButtons.length}`);
+    urlButtons.forEach((btn, i) => {
+        const url = btn.getAttribute('data-url');
+        console.log(`   🎯 Botón ${i + 1}: ${url ? '✅ ' + url.substring(0, 50) + '...' : '❌ Sin URL'}`);
+    });
+    
+    alert('Debug completado. Revisa la consola del navegador (F12) para ver los detalles.');
+}
+
+function testApiHistorial() {
+    console.log('🔧 TEST: Probando API del historial directamente...');
+    
+    fetch('/api/historial')
+        .then(response => {
+            console.log('📡 Respuesta HTTP:', response.status, response.statusText);
+            return response.json();
+        })
+        .then(data => {
+            console.log('📋 Datos recibidos:', data);
+            
+            if (data.success && data.historial) {
+                console.log(`📊 Total de archivos: ${data.historial.length}`);
+                
+                data.historial.forEach((item, i) => {
+                    console.log(`\n📄 Archivo ${i + 1}:`);
+                    console.log(`   📁 Nombre: ${item.archivo}`);
+                    console.log(`   🔗 URL: ${item.url || '❌ SIN URL'}`);
+                    console.log(`   📅 Fecha: ${item.fecha}`);
+                    console.log(`   📏 Tamaño: ${item.tamaño}`);
+                });
+                
+                const conUrls = data.historial.filter(item => item.url).length;
+                const sinUrls = data.historial.length - conUrls;
+                
+                alert(`✅ API funcionando correctamente!
+📊 Total: ${data.historial.length} archivos
+🔗 Con URL: ${conUrls}
+❌ Sin URL: ${sinUrls}
+
+Ver consola (F12) para detalles completos.`);
+            } else {
+                console.error('❌ Error en la respuesta:', data);
+                alert('❌ Error en la respuesta de la API');
+            }
+        })
+        .catch(error => {
+            console.error('❌ Error en la petición:', error);
+            alert('❌ Error al conectar con la API: ' + error.message);
+        });
+}
+
+function forceRefreshHistorial() {
+    console.log('🔄 REFRESH: Forzando actualización del historial...');
+    
+    // Limpiar cache si existe
+    if ('caches' in window) {
+        caches.delete('historial-cache').then(() => {
+            console.log('🗑️ Cache limpiado');
+        });
+    }
+    
+    // Agregar parámetro aleatorio para evitar cache
+    const timestamp = new Date().getTime();
+    fetch(`/api/historial?_t=${timestamp}`)
+        .then(r => r.json())
+        .then(data => {
+            console.log('✅ Datos frescos obtenidos:', data);
+            
+            if (data.success && data.historial) {
+                // Forzar actualización del DOM
+                const historialContainer = document.getElementById('historial-container');
+                
+                if (data.historial.length === 0) {
+                    historialContainer.innerHTML = '<p class="text-center text-muted">No hay descargas en el historial</p>';
+                } else {
+                    let html = '<ul id="historial-list">';
+                    
+                    data.historial.forEach((item, index) => {
                         html += '<li class="d-flex justify-content-between align-items-center mb-2 historial-item" ' +
                                'data-filename="' + item.archivo.toLowerCase() + '" ' +
                                'data-date="' + (item.fecha_timestamp || 0) + '" ' +
@@ -1737,7 +1911,7 @@ function updateHistorial() {
                         
                         if (item.url) {
                             html += '<br><small class="url-metadata">' +
-                                   '<span class="text-break" style="font-size: 0.75em;">' + item.url + '</span>' +
+                                   '<span class="text-break" style="font-size: 0.75em;">🔗 ' + item.url + '</span>' +
                                    '</small>';
                         }
                         
@@ -1762,15 +1936,13 @@ function updateHistorial() {
                     historialContainer.innerHTML = html;
                 }
                 
-                // Actualizar contador de descargas totales
-                const totalElement = document.getElementById('total-downloads');
-                if (totalElement) {
-                    totalElement.textContent = data.historial.length;
-                }
+                console.log('🔄 Historial actualizado forzadamente');
+                alert('✅ Historial actualizado forzadamente!');
             }
         })
         .catch(error => {
-            console.error('Error actualizando historial:', error);
+            console.error('❌ Error en actualización forzada:', error);
+            alert('❌ Error en actualización: ' + error.message);
         });
 }
 
@@ -3997,33 +4169,74 @@ def get_historial():
                     file_stats = os.stat(archivo)
                     fecha_modificacion = datetime.fromtimestamp(file_stats.st_mtime)
                     
-                    # Buscar URL asociada en el historial si existe
+                    # Buscar URL asociada PRIMERO en metadata (.meta file)
                     url_asociada = None
-                    for download_id, progress in multi_progress.items():
-                        if progress.get('output_file') == nombre_archivo:
-                            url_asociada = progress.get('url')
-                            break
+                    fecha_descarga = None
+                    
+                    try:
+                        metadata = load_video_metadata(nombre_archivo)
+                        if metadata:
+                            url_asociada = metadata.get('url')
+                            fecha_descarga = metadata.get('download_date')
+                            print(f"📋 Metadata cargada para {nombre_archivo}: URL={url_asociada}")
+                        else:
+                            print(f"⚠️ No se pudo cargar metadata para {nombre_archivo}")
+                    except Exception as meta_error:
+                        print(f"❌ Error cargando metadata para {nombre_archivo}: {meta_error}")
+                    
+                    # Si no se encontró en metadata, buscar en descargas activas como fallback
+                    if not url_asociada:
+                        for download_id, progress in multi_progress.items():
+                            if progress.get('output_file') == nombre_archivo:
+                                url_asociada = progress.get('url')
+                                print(f"📥 URL encontrada en multi_progress para {nombre_archivo}: {url_asociada}")
+                                break
+                    
+                    # Usar fecha de descarga de metadata si está disponible, sino fecha de modificación
+                    fecha_para_mostrar = fecha_modificacion.strftime('%d/%m/%Y %H:%M')
+                    timestamp_para_ordenar = int(file_stats.st_mtime)
+                    
+                    if fecha_descarga:
+                        try:
+                            # Parsear fecha de metadata (formato ISO)
+                            dt_descarga = datetime.fromisoformat(fecha_descarga.replace('Z', '+00:00').replace('+00:00', ''))
+                            fecha_para_mostrar = dt_descarga.strftime('%d/%m/%Y %H:%M')
+                            timestamp_para_ordenar = int(dt_descarga.timestamp())
+                            print(f"📅 Usando fecha de metadata para {nombre_archivo}: {fecha_para_mostrar}")
+                        except Exception as date_error:
+                            print(f"⚠️ Error parseando fecha de metadata: {date_error}")
                     
                     archivos.append({
                         'archivo': nombre_archivo,
                         'tamaño': format_file_size(file_stats.st_size),
                         'tamaño_bytes': file_stats.st_size,
-                        'fecha': fecha_modificacion.strftime('%d/%m/%Y %H:%M'),
-                        'fecha_timestamp': int(file_stats.st_mtime),
+                        'fecha': fecha_para_mostrar,
+                        'fecha_timestamp': timestamp_para_ordenar,
                         'url': url_asociada
                     })
+                    
+                    print(f"✅ Procesado {nombre_archivo} - URL: {url_asociada}")
+                    
                 except Exception as e:
-                    print(f"Error procesando archivo {archivo}: {e}")
+                    print(f"❌ Error procesando archivo {archivo}: {e}")
         
         # Ordenar por fecha de modificación (más recientes primero)
         archivos.sort(key=lambda x: x['fecha_timestamp'], reverse=True)
+        
+        print(f"📊 Historial generado: {len(archivos)} archivos")
+        for archivo in archivos:
+            print(f"  📄 {archivo['archivo']} - URL: {archivo['url']}")
         
         return jsonify({
             'success': True,
             'historial': archivos
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        error_msg = f"Error generando historial: {str(e)}"
+        print(f"❌ {error_msg}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': error_msg}), 500
 
 @app.route('/api/analytics', methods=['GET'])
 def get_analytics():
