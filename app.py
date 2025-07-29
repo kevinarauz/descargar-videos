@@ -1045,7 +1045,7 @@ function toggleConfig(setting) {
     userConfig[setting] = !userConfig[setting];
     saveUserConfig();
     updateConfigUI();
-    showNotification(`${setting} ${userConfig[setting] ? 'activado' : 'desactivado'}`, 'info');
+    showNotification(setting + ' ' + (userConfig[setting] ? 'activado' : 'desactivado'), 'info');
 }
 
 // Actualizar configuraciones
@@ -1058,7 +1058,7 @@ function updateMaxConcurrent(value) {
 function updateQuality(value) {
     userConfig.quality = value;
     saveUserConfig();
-    showNotification(`Calidad establecida: ${value}`, 'info');
+    showNotification('Calidad establecida: ' + value, 'info');
 }
 
 // Sistema de notificaciones
@@ -1066,7 +1066,7 @@ function showNotification(message, type = 'info') {
     if (!userConfig.notifications) return;
     
     const notification = document.createElement('div');
-    notification.className = `alert alert-${type} position-fixed`;
+    notification.className = 'alert alert-' + type + ' position-fixed';
     notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
     notification.innerHTML = `
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
@@ -1162,7 +1162,11 @@ function renombrarArchivo(filename) {
         }).then(r => r.json()).then(data => {
             if (data.success) {
                 showNotification('Archivo renombrado correctamente', 'success');
-                setTimeout(() => location.reload(), 1000);
+                
+                // Actualizar el historial cuando se renombre un archivo
+                setTimeout(function() {
+                    updateHistorial();
+                }, 500);
             } else {
                 showNotification('Error al renombrar: ' + data.error, 'danger');
             }
@@ -1282,7 +1286,7 @@ function updateQueueDisplay() {
                 
                 // Actualizar botón de toggle
                 if (toggleBtn) {
-                    toggleBtn.textContent = data.running ? '⏸️ Pausar' : '▶️ Iniciar';
+                    toggleBtn.textContent = data.running ? 'Pausar' : 'Iniciar';
                 }
                 queueRunning = data.running;
             }
@@ -1312,24 +1316,24 @@ function toggleQueue() {
             
             // Mensaje específico dependiendo de la acción
             if (queueRunning) {
-                showNotification('✅ Cola iniciada - Las descargas comenzarán automáticamente', 'success');
+                showNotification('Cola iniciada - Las descargas comenzarán automáticamente', 'success');
                 // Forzar actualización inmediata de descargas activas
                 setTimeout(loadActiveDownloads, 1000);
             } else {
-                showNotification('⏸️ Cola pausada', 'info');
+                showNotification('Cola pausada', 'info');
             }
         } else {
             showNotification('Error: ' + data.error, 'danger');
             // Restaurar texto del botón en caso de error
             if (toggleBtn) {
-                toggleBtn.textContent = queueRunning ? '⏸️ Pausar' : '▶️ Iniciar';
+                toggleBtn.textContent = queueRunning ? 'Pausar' : 'Iniciar';
             }
         }
     }).catch(error => {
         showNotification('Error: ' + error.message, 'danger');
         // Restaurar texto del botón en caso de error
         if (toggleBtn) {
-            toggleBtn.textContent = queueRunning ? '⏸️ Pausar' : '▶️ Iniciar';
+            toggleBtn.textContent = queueRunning ? 'Pausar' : 'Iniciar';
         }
     });
 }
@@ -1374,7 +1378,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadActiveDownloads();
     
     // Actualizar progreso cada 2 segundos
-    setInterval(actualizarProgreso, 2000);
+    setInterval(actualizarTodasLasDescargas, 2000);
     
     // Actualizar estadísticas cada 30 segundos
     setInterval(updateDashboardStats, 30000);
@@ -1384,6 +1388,12 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Actualizar descargas activas cada 5 segundos
     setInterval(loadActiveDownloads, 5000);
+    
+    // Cargar el historial inicial
+    updateHistorial();
+    
+    // Actualizar historial cada 30 segundos
+    setInterval(updateHistorial, 30000);
 });
 
 // Función para cargar descargas activas al refrescar
@@ -1426,6 +1436,68 @@ function loadActiveDownloads() {
         });
 }
 
+// Función para actualizar el historial dinámicamente
+function updateHistorial() {
+    fetch('/api/historial')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.historial) {
+                const historialContainer = document.getElementById('historial-container');
+                
+                if (data.historial.length === 0) {
+                    historialContainer.innerHTML = '<p class="text-center text-muted">No hay descargas en el historial</p>';
+                } else {
+                    let html = '<ul id="historial-list">';
+                    
+                    data.historial.forEach(item => {
+                        html += '<li class="d-flex justify-content-between align-items-center mb-2 historial-item" ' +
+                               'data-filename="' + item.archivo.toLowerCase() + '" ' +
+                               'data-date="' + (item.fecha_timestamp || 0) + '" ' +
+                               'data-size="' + (item.tamaño_bytes || 0) + '">' +
+                               '<div class="flex-grow-1 me-2">' +
+                               '<a href="/static/' + item.archivo + '" download class="text-truncate d-block">' + item.archivo + '</a>' +
+                               '<div class="download-stats">' +
+                               item.tamaño + ' • ' + item.fecha;
+                        
+                        if (item.url) {
+                            html += '<br><small class="url-metadata">' +
+                                   '<span class="text-break" style="font-size: 0.75em;">' + item.url + '</span>' +
+                                   '</small>';
+                        }
+                        
+                        html += '</div></div>' +
+                               '<div class="btn-group-vertical" role="group">' +
+                               '<button class="btn btn-outline-info btn-sm mb-1" data-url="' + (item.url || '') + '" onclick="copiarUrlFromData(this)" title="Copiar URL al portapapeles">' +
+                               'Copiar' +
+                               '</button>' +
+                               '<button class="btn btn-outline-success btn-sm mb-1" data-url="' + (item.url || '') + '" onclick="reproducirUrlFromData(this)" title="Reproducir video">' +
+                               'Play' +
+                               '</button>' +
+                               '<button class="btn btn-outline-warning btn-sm mb-1" onclick="renombrarArchivo(\\"' + item.archivo + '\\")" title="Renombrar archivo">' +
+                               'Renombrar' +
+                               '</button>' +
+                               '<button class="btn btn-outline-danger btn-sm" onclick="eliminarArchivo(\\"' + item.archivo + '\\")" title="Eliminar archivo">' +
+                               'Eliminar' +
+                               '</button>' +
+                               '</div></li>';
+                    });
+                    
+                    html += '</ul>';
+                    historialContainer.innerHTML = html;
+                }
+                
+                // Actualizar contador de descargas totales
+                const totalElement = document.getElementById('total-downloads');
+                if (totalElement) {
+                    totalElement.textContent = data.historial.length;
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error actualizando historial:', error);
+        });
+}
+
 // Función para extraer y mostrar metadatos M3U8
 function extractMetadata() {
     const url = document.getElementById('m3u8-url').value.trim();
@@ -1453,7 +1525,12 @@ function extractMetadata() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: url })
     })
-    .then(r => r.json())
+    .then(r => {
+        if (!r.ok) {
+            throw new Error('HTTP ' + r.status + ': ' + r.statusText);
+        }
+        return r.json();
+    })
     .then(data => {
         if (data.success) {
             displayMetadata(data.metadata, data.suggested_filename);
@@ -1467,15 +1544,18 @@ function extractMetadata() {
         } else {
             metadataContent.innerHTML = `
                 <div class="alert alert-danger">
-                    <strong>Error:</strong> ${data.error}
+                    <strong>Error:</strong> ${data.error || 'Error desconocido'}
                 </div>
             `;
+            console.error('Error del servidor:', data.error);
         }
     })
     .catch(error => {
+        console.error('Error completo:', error);
         metadataContent.innerHTML = `
             <div class="alert alert-danger">
-                <strong>Error:</strong> ${error.message}
+                <strong>Error de conexión:</strong> ${error.message}
+                <br><small>Revisa la consola del navegador para más detalles</small>
             </div>
         `;
     });
@@ -1668,29 +1748,28 @@ function mostrarDescargaActiva(download_id, url) {
     barra.id = 'descarga-' + download_id;
     barra.className = 'descarga-item';
     barra.setAttribute('data-download-id', download_id);  // Añadir para rastreo
-    barra.innerHTML = `
-        <div>
-            <span class="status-indicator status-downloading"></span>
-            <strong id='archivo-${download_id}'>Preparando descarga...</strong>
-        </div>
-        <div class="download-stats" id="stats-${download_id}">
-            Inicializando...
-        </div>
-        <div class='mt-2 url-display small' id="url-${download_id}">
-            <strong>🔗 URL:</strong> <span class="text-break">${url || 'N/A'}</span>
-        </div>
-        <div>Progreso: <span id='progreso-${download_id}'>0%</span></div>
-        <div class='progress mb-2'>
-            <div class='progress-bar' id='bar-${download_id}' role='progressbar' style='width:0%'></div>
-        </div>
-        <div>
-            <button class='btn btn-danger btn-sm' id='cancel-btn-${download_id}' onclick='cancelarDescarga("${download_id}")'>Cancelar</button>
-        </div>`;
+    barra.innerHTML = '<div>' +
+        '<span class="status-indicator status-downloading"></span>' +
+        '<strong id="archivo-' + download_id + '">Preparando descarga...</strong>' +
+        '</div>' +
+        '<div class="download-stats" id="stats-' + download_id + '">' +
+        'Inicializando...' +
+        '</div>' +
+        '<div class="mt-2 url-display small" id="url-' + download_id + '">' +
+        '<strong>URL:</strong> <span class="text-break">' + (url || 'N/A') + '</span>' +
+        '</div>' +
+        '<div>Progreso: <span id="progreso-' + download_id + '">0%</span></div>' +
+        '<div class="progress mb-2">' +
+        '<div class="progress-bar" id="bar-' + download_id + '" role="progressbar" style="width:0%"></div>' +
+        '</div>' +
+        '<div>' +
+        '<button class="btn btn-danger btn-sm" id="cancel-btn-' + download_id + '" onclick="cancelarDescarga(\\"' + download_id + '\\")">Cancelar</button>' +
+        '</div>';
     
     div.appendChild(barra);
     
     if (url) {
-        let urlDiv = document.getElementById(`url-${download_id}`);
+        let urlDiv = document.getElementById('url-' + download_id);
         let copyBtn = document.createElement('button');
         copyBtn.className = 'btn btn-outline-info btn-sm ms-2';
         copyBtn.innerHTML = '📋';
@@ -1702,8 +1781,44 @@ function mostrarDescargaActiva(download_id, url) {
     actualizarProgreso(download_id);
 }
 
+// Función para actualizar el progreso de todas las descargas activas
+function actualizarTodasLasDescargas() {
+    // Buscar todos los elementos de descarga activos
+    const descargaElements = document.querySelectorAll('[id^="descarga-"]');
+    
+    descargaElements.forEach(element => {
+        const download_id = element.id.replace('descarga-', '');
+        // Validar que el download_id es válido y el elemento realmente existe
+        if (download_id && download_id !== 'undefined' && document.getElementById('descarga-' + download_id)) {
+            actualizarProgreso(download_id);
+        }
+    });
+}
+
 function actualizarProgreso(download_id) {
-    fetch('/progreso/' + download_id).then(r => r.json()).then(data => {
+    // Validar que download_id existe y no es undefined
+    if (!download_id || download_id === 'undefined') {
+        return;
+    }
+    
+    // Verificar que el elemento de descarga aún existe antes de hacer fetch
+    if (!document.getElementById('descarga-' + download_id)) {
+        return;
+    }
+    
+    fetch('/progreso/' + download_id)
+        .then(r => {
+            if (!r.ok) {
+                throw new Error('HTTP ' + r.status);
+            }
+            return r.json();
+        })
+        .then(data => {
+        // Verificar nuevamente que el elemento existe (puede haber sido eliminado durante el fetch)
+        if (!document.getElementById('descarga-' + download_id)) {
+            return;
+        }
+        
         let bar = document.getElementById('bar-' + download_id);
         let prog = document.getElementById('progreso-' + download_id);
         let archivo = document.getElementById('archivo-' + download_id);
@@ -1712,84 +1827,96 @@ function actualizarProgreso(download_id) {
         let stats = document.getElementById('stats-' + download_id);
         
         if (data.output_file && archivo) {
-            archivo.innerHTML = `<span class="status-indicator status-${data.status}"></span>📥 ${data.output_file}`;
+            archivo.innerHTML = '<span class="status-indicator status-' + data.status + '"></span>Descargando: ' + data.output_file;
         }
         
         if (stats && data.total > 0) {
-            let segmentos = `${data.current || 0}/${data.total} segmentos`;
+            let segmentos = (data.current || 0) + '/' + data.total + ' segmentos';
             if (data.status === 'downloading') {
                 let velocidad = data.current && data.start_time ? 
                     ((data.current / (Date.now()/1000 - data.start_time)) * 60).toFixed(1) : '0';
-                stats.innerText = `${segmentos} • ~${velocidad} seg/min`;
+                stats.innerText = segmentos + ' • ~' + velocidad + ' seg/min';
             } else {
                 stats.innerText = segmentos;
             }
         }
         
         if (data.status === 'downloading') {
-            bar.style.width = data.porcentaje + '%';
-            prog.innerText = data.porcentaje + '%';
-            descargaDiv.className = 'descarga-item';
+            if (bar) bar.style.width = data.porcentaje + '%';
+            if (prog) prog.innerText = data.porcentaje + '%';
+            if (descargaDiv) descargaDiv.className = 'descarga-item';
             setTimeout(function() { actualizarProgreso(download_id); }, 1000);
         } else if (data.status === 'done') {
-            bar.style.width = '100%';
-            prog.innerText = '100%';
-            if (archivo) archivo.innerHTML = `<span class="status-indicator status-done"></span>✅ ${data.output_file}`;
+            if (bar) bar.style.width = '100%';
+            if (prog) prog.innerText = '100%';
+            if (archivo) archivo.innerHTML = '<span class="status-indicator status-done"></span>Completado: ' + data.output_file;
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-done';
             if (stats) {
                 let duracion = data.end_time && data.start_time ? 
                     Math.round(data.end_time - data.start_time) : 0;
-                stats.innerText = `Completado en ${duracion}s`;
+                stats.innerText = 'Completado en ' + duracion + 's';
             }
-            document.getElementById('descarga-' + download_id).innerHTML += `
-                <div class='mt-2'>
-                    <a href='/static/${data.output_file}' download class='btn btn-primary btn-sm me-2'>Descargar MP4</a>
-                    <button class='btn btn-outline-secondary btn-sm' onclick='eliminarDescargaActiva("${download_id}")' title='Eliminar de la lista'>
-                        🗑️ Quitar
-                    </button>
-                </div>`;
-            showNotification(`Descarga completada: ${data.output_file}`, 'success');
+            let descargaElement = document.getElementById('descarga-' + download_id);
+            if (descargaElement) {
+                descargaElement.innerHTML += 
+                    '<div class="mt-2">' +
+                        '<a href="/static/' + data.output_file + '" download class="btn btn-primary btn-sm me-2">Descargar MP4</a>' +
+                        '<button class="btn btn-outline-secondary btn-sm" onclick="eliminarDescargaActiva(\\"' + download_id + '\\")" title="Eliminar de la lista">' +
+                            'Quitar' +
+                        '</button>' +
+                    '</div>';
+            }
+            showNotification('Descarga completada: ' + data.output_file, 'success');
+            
+            // Actualizar el historial cuando se complete una descarga
+            setTimeout(function() { 
+                updateHistorial();
+            }, 1000);
+            
             setTimeout(function() { 
                 location.reload(); 
-            }, 2000);
+            }, 3000);
         } else if (data.status === 'error') {
-            if (archivo) archivo.innerHTML = `<span class="status-indicator status-error"></span>❌ ${data.output_file || 'Error'}`;
+            if (archivo) archivo.innerHTML = '<span class="status-indicator status-error"></span>Error: ' + (data.output_file || 'Error');
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-error';
             if (stats) stats.innerText = 'Error en la descarga';
             
-            let buttonsHtml = `
-                <div class='mt-2 text-danger'>${data.error}</div>
-                <div class='mt-2 url-display small'>
-                    <strong>🔗 URL:</strong> <span class="text-break">${data.url || 'N/A'}</span>
-                </div>
-                <div class='mt-2'>
-                    <button class='btn btn-warning btn-sm me-2' onclick='reintentarDescarga("${download_id}")' title='Reintentar descarga'>
-                        🔄 Reintentar
-                    </button>`;
+            let buttonsHtml = 
+                '<div class="mt-2 text-danger">' + data.error + '</div>' +
+                '<div class="mt-2 url-display small">' +
+                    '<strong>URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>' +
+                '</div>' +
+                '<div class="mt-2">' +
+                    '<button class="btn btn-warning btn-sm me-2" onclick="reintentarDescarga(\\"' + download_id + '\\")" title="Reintentar descarga">' +
+                        'Reintentar' +
+                    '</button>';
             
             // Añadir botón de reanudar si es posible
             if (data.can_resume) {
-                buttonsHtml += `
-                    <button class='btn btn-info btn-sm me-2' onclick='reanudarDescarga("${download_id}")' title='Reanudar descarga'>
-                        ▶️ Continuar
-                    </button>`;
+                buttonsHtml += 
+                    '<button class="btn btn-info btn-sm me-2" onclick="reanudarDescarga(\\"' + download_id + '\\")" title="Reanudar descarga">' +
+                        'Continuar' +
+                    '</button>';
             }
             
-            buttonsHtml += `
-                    <button class='btn btn-success btn-sm me-2' onclick='reproducirUrlActiva("${download_id}")' title='Reproducir video'>
-                        ▶️ Reproducir
-                    </button>
-                    <button class='btn btn-outline-secondary btn-sm' onclick='eliminarDescargaActiva("${download_id}")' title='Eliminar de la lista'>
-                        🗑️ Quitar
-                    </button>
-                </div>`;
+            buttonsHtml += 
+                    '<button class="btn btn-success btn-sm me-2" onclick="reproducirUrlActiva(\\"' + download_id + '\\")" title="Reproducir video">' +
+                        'Reproducir' +
+                    '</button>' +
+                    '<button class="btn btn-outline-secondary btn-sm" onclick="eliminarDescargaActiva(\\"' + download_id + '\\")" title="Eliminar de la lista">' +
+                        'Quitar' +
+                    '</button>' +
+                '</div>';
                 
-            document.getElementById('descarga-' + download_id).innerHTML += buttonsHtml;
-            showNotification(`Error en descarga: ${data.error}`, 'danger');
+            let descargaElement = document.getElementById('descarga-' + download_id);
+            if (descargaElement) {
+                descargaElement.innerHTML += buttonsHtml;
+            }
+            showNotification('Error en descarga: ' + data.error, 'danger');
         } else if (data.status === 'cancelled') {
-            if (archivo) archivo.innerHTML = `<span class="status-indicator status-cancelled"></span>🚫 Descarga cancelada`;
+            if (archivo) archivo.innerHTML = '<span class="status-indicator status-cancelled"></span>Descarga cancelada';
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-cancelled';
             if (stats) stats.innerText = 'Cancelado por el usuario';
@@ -1812,39 +1939,51 @@ function actualizarProgreso(download_id) {
                     </button>`;
             }
             
-            buttonsHtml += `
-                    <button class='btn btn-success btn-sm me-2' onclick='reproducirUrlActiva("${download_id}")' title='Reproducir video'>
-                        ▶️ Reproducir
-                    </button>
-                    <button class='btn btn-outline-secondary btn-sm' onclick='eliminarDescargaActiva("${download_id}")' title='Eliminar de la lista'>
-                        🗑️ Quitar
-                    </button>
-                </div>`;
+            buttonsHtml += 
+                    '<button class="btn btn-success btn-sm me-2" onclick="reproducirUrlActiva(\\"' + download_id + '\\")" title="Reproducir video">' +
+                        'Reproducir' +
+                    '</button>' +
+                    '<button class="btn btn-outline-secondary btn-sm" onclick="eliminarDescargaActiva(\\"' + download_id + '\\")" title="Eliminar de la lista">' +
+                        'Quitar' +
+                    '</button>' +
+                '</div>';
                 
-            document.getElementById('descarga-' + download_id).innerHTML += buttonsHtml;
+            let descargaElementCancelled = document.getElementById('descarga-' + download_id);
+            if (descargaElementCancelled) {
+                descargaElementCancelled.innerHTML += buttonsHtml;
+            }
             showNotification('Descarga cancelada', 'warning');
         } else if (data.status === 'paused') {
-            if (archivo) archivo.innerHTML = `<span class="status-indicator status-cancelled"></span>⏸️ Descarga pausada`;
+            if (archivo) archivo.innerHTML = '<span class="status-indicator status-cancelled"></span>Descarga pausada';
             if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-cancelled';
             if (stats) stats.innerText = 'Pausada - se puede reanudar';
             
-            document.getElementById('descarga-' + download_id).innerHTML += `
-                <div class='mt-2 text-info'>Descarga pausada - puedes continuarla</div>
-                <div class='mt-2 url-display small'>
-                    <strong>🔗 URL:</strong> <span class="text-break">${data.url || 'N/A'}</span>
-                </div>
-                <div class='mt-2'>
-                    <button class='btn btn-info btn-sm me-2' onclick='reanudarDescarga("${download_id}")' title='Continuar descarga'>
-                        ▶️ Continuar
-                    </button>
-                    <button class='btn btn-success btn-sm me-2' onclick='reproducirUrlActiva("${download_id}")' title='Reproducir video'>
-                        ▶️ Reproducir
-                    </button>
-                    <button class='btn btn-outline-secondary btn-sm' onclick='eliminarDescargaActiva("${download_id}")' title='Eliminar de la lista'>
-                        🗑️ Quitar
-                    </button>
-                </div>`;
+            let descargaElementPaused = document.getElementById('descarga-' + download_id);
+            if (descargaElementPaused) {
+                descargaElementPaused.innerHTML += 
+                    '<div class="mt-2 text-info">Descarga pausada - puedes continuarla</div>' +
+                    '<div class="mt-2 url-display small">' +
+                        '<strong>URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>' +
+                    '</div>' +
+                    '<div class="mt-2">' +
+                        '<button class="btn btn-info btn-sm me-2" onclick="reanudarDescarga(\\"' + download_id + '\\")" title="Continuar descarga">' +
+                            'Continuar' +
+                        '</button>' +
+                        '<button class="btn btn-success btn-sm me-2" onclick="reproducirUrlActiva(\\"' + download_id + '\\")" title="Reproducir video">' +
+                            'Reproducir' +
+                        '</button>' +
+                        '<button class="btn btn-outline-secondary btn-sm" onclick="eliminarDescargaActiva(\\"' + download_id + '\\")" title="Eliminar de la lista">' +
+                            'Quitar' +
+                        '</button>' +
+                    '</div>';
+            }
+        }
+    }).catch(error => {
+        // Manejar errores del fetch silenciosamente
+        // Solo logear si hay errores importantes
+        if (error.message !== 'Not Found' && !error.message.includes('404')) {
+            console.error('Error actualizando progreso para', download_id, ':', error);
         }
     });
 }
@@ -1856,19 +1995,24 @@ function cancelarDescarga(download_id) {
         }).then(r => r.json()).then(data => {
             if (data.success) {
                 let archivo = document.getElementById('archivo-' + download_id);
-                if (archivo) archivo.innerText = `🚫 Cancelando...`;
+                if (archivo) archivo.innerText = 'Cancelando...';
             }
         });
     }
 }
 
 function eliminarArchivo(filename) {
-    if (confirm(`¿Estás seguro de que quieres eliminar el archivo "${filename}"?\n\nEsta acción no se puede deshacer.`)) {
+    if (confirm('¿Estás seguro de que quieres eliminar el archivo "' + filename + '"? Esta acción no se puede deshacer.')) {
         fetch('/eliminar/' + encodeURIComponent(filename), {
             method: 'DELETE'
         }).then(r => r.json()).then(data => {
             if (data.success) {
-                location.reload();
+                showNotification('Archivo eliminado correctamente', 'info');
+                
+                // Actualizar el historial cuando se elimine un archivo
+                setTimeout(function() {
+                    updateHistorial();
+                }, 500);
             } else {
                 alert('Error al eliminar el archivo: ' + (data.error || 'Error desconocido'));
             }
@@ -1888,8 +2032,11 @@ function eliminarDescargaActiva(download_id) {
                 if (elemento) {
                     elemento.remove();
                 }
+                showNotification('Descarga eliminada de la lista activa', 'info');
+                
+                // Actualizar el historial cuando se elimine una descarga
                 setTimeout(function() {
-                    location.reload();
+                    updateHistorial();
                 }, 500);
             } else {
                 alert('Error al eliminar la descarga: ' + (data.error || 'Error desconocido'));
@@ -1903,7 +2050,7 @@ function eliminarDescargaActiva(download_id) {
 function reintentarDescarga(download_id) {
     fetch('/progreso/' + download_id).then(r => r.json()).then(data => {
         if (data.url && data.output_file) {
-            if (confirm(`¿Reintentar la descarga de "${data.output_file}"?`)) {
+            if (confirm('¿Reintentar la descarga de "' + data.output_file + '"?')) {
                 document.getElementById('m3u8-url').value = data.url;
                 document.getElementById('output-name').value = data.output_file.replace('.mp4', '');
                 
@@ -1949,7 +2096,7 @@ function copiarUrl(url) {
         navigator.clipboard.writeText(urlToCopy).then(function() {
             let button = event.target;
             let originalText = button.innerHTML;
-            button.innerHTML = '✅';
+            button.innerHTML = 'Copiado';
             button.disabled = true;
             setTimeout(function() {
                 button.innerHTML = originalText;
@@ -1973,7 +2120,7 @@ function copiarUrlFromData(button) {
     if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(url).then(function() {
             let originalText = button.innerHTML;
-            button.innerHTML = '✅';
+            button.innerHTML = 'Copiado';
             button.disabled = true;
             setTimeout(function() {
                 button.innerHTML = originalText;
@@ -2983,14 +3130,21 @@ def process_download_queue():
 def get_m3u8_metadata():
     """Obtiene metadatos de una URL M3U8 para sugerir nombre y mostrar información"""
     try:
+        # Verificar que se reciban datos JSON válidos
+        if not request.is_json:
+            return jsonify({'success': False, 'error': 'Content-Type debe ser application/json'}), 400
+        
         data = request.get_json()
-        m3u8_url = data.get('url', '').strip()
+        if data is None:
+            return jsonify({'success': False, 'error': 'No se recibieron datos JSON válidos'}), 400
+        
+        m3u8_url = data.get('url', '').strip() if isinstance(data, dict) else ''
         
         if not m3u8_url:
-            return jsonify({'success': False, 'error': 'URL no proporcionada'}), 400
+            return jsonify({'success': False, 'error': 'URL no proporcionada en los datos JSON'}), 400
         
         if not is_valid_m3u8_url(m3u8_url):
-            return jsonify({'success': False, 'error': 'URL M3U8 no válida'}), 400
+            return jsonify({'success': False, 'error': f'URL M3U8 no válida: {m3u8_url}'}), 400
         
         metadata = extract_m3u8_metadata(m3u8_url)
         
@@ -3001,7 +3155,8 @@ def get_m3u8_metadata():
         })
         
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f"Error en /api/metadata: {str(e)}")
+        return jsonify({'success': False, 'error': f'Error interno del servidor: {str(e)}'}), 500
 
 @app.route('/api/active_downloads', methods=['GET'])
 def get_active_downloads():
@@ -3010,6 +3165,53 @@ def get_active_downloads():
         return jsonify({
             'success': True,
             'downloads': multi_progress
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/historial', methods=['GET'])
+def get_historial():
+    """Obtiene el historial de descargas actualizado"""
+    try:
+        import glob
+        import os
+        from datetime import datetime
+        
+        # Obtener todos los archivos MP4 del directorio static
+        archivos = []
+        static_dir = 'static'
+        
+        if os.path.exists(static_dir):
+            for archivo in glob.glob(os.path.join(static_dir, '*.mp4')):
+                nombre_archivo = os.path.basename(archivo)
+                try:
+                    file_stats = os.stat(archivo)
+                    fecha_modificacion = datetime.fromtimestamp(file_stats.st_mtime)
+                    
+                    # Buscar URL asociada en el historial si existe
+                    url_asociada = None
+                    for download_id, progress in multi_progress.items():
+                        if progress.get('output_file') == nombre_archivo:
+                            url_asociada = progress.get('url')
+                            break
+                    
+                    archivos.append({
+                        'archivo': nombre_archivo,
+                        'tamaño': format_file_size(file_stats.st_size),
+                        'tamaño_bytes': file_stats.st_size,
+                        'fecha': fecha_modificacion.strftime('%d/%m/%Y %H:%M'),
+                        'fecha_timestamp': int(file_stats.st_mtime),
+                        'url': url_asociada
+                    })
+                except Exception as e:
+                    print(f"Error procesando archivo {archivo}: {e}")
+        
+        # Ordenar por fecha de modificación (más recientes primero)
+        archivos.sort(key=lambda x: x['fecha_timestamp'], reverse=True)
+        
+        return jsonify({
+            'success': True,
+            'historial': archivos
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
