@@ -3488,15 +3488,30 @@ def renombrar_archivo(filename):
         
         if os.path.exists(metadata_original):
             try:
-                # Actualizar el contenido del metadata con el nuevo nombre
+                # Cargar metadatos existentes
                 metadata = load_video_metadata(filename)
                 if metadata:
+                    # Actualizar solo el nombre, preservando toda la demás información
                     metadata['filename'] = nuevo_nombre_limpio
+                    # Agregar información de renombrado
+                    metadata['renamed_from'] = filename
+                    metadata['rename_date'] = time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
+                    
+                    # Guardar metadatos actualizados
                     with open(metadata_nuevo, 'w', encoding='utf-8') as f:
                         import json
                         json.dump(metadata, f, ensure_ascii=False, indent=2)
-                os.remove(metadata_original)
-                print(f"✅ Metadatos actualizados")
+                    
+                    # Eliminar archivo de metadatos original
+                    os.remove(metadata_original)
+                    print(f"✅ Metadatos preservados y actualizados: {metadata_nuevo}")
+                    
+                    # Verificar que la URL se preservó
+                    if 'url' in metadata:
+                        print(f"📋 URL preservada: {metadata['url']}")
+                else:
+                    print(f"⚠️ No se pudieron cargar los metadatos de {filename}")
+                    
             except Exception as meta_error:
                 print(f"⚠️ Error al actualizar metadatos: {meta_error}")
         
@@ -3577,6 +3592,42 @@ def renombrar_descarga_activa(download_id):
         
         # Guardar el estado actualizado
         save_download_state()
+        
+        # Actualizar metadatos si ya existen o crear nuevos
+        static_dir = os.path.join(os.path.dirname(__file__), 'static')
+        metadata_nuevo = os.path.join(static_dir, f"{nuevo_nombre_limpio}.meta")
+        
+        try:
+            # Crear o actualizar metadatos con la información de la descarga activa
+            metadata = {
+                'url': download_info.get('url', ''),
+                'download_date': download_info.get('start_time', ''),
+                'filename': nuevo_nombre_limpio,
+                'download_id': download_id,
+                'status': download_info.get('status', 'downloading')
+            }
+            
+            # Si ya existe un archivo de metadatos, preservar información adicional
+            if os.path.exists(metadata_nuevo):
+                try:
+                    existing_metadata = load_video_metadata(nuevo_nombre_limpio)
+                    if existing_metadata:
+                        # Preservar datos existentes y actualizar con nuevos
+                        existing_metadata.update(metadata)
+                        metadata = existing_metadata
+                        print(f"📋 Metadatos existentes preservados y actualizados")
+                except Exception as load_error:
+                    print(f"⚠️ Error al cargar metadatos existentes: {load_error}")
+            
+            # Guardar metadatos actualizados
+            with open(metadata_nuevo, 'w', encoding='utf-8') as f:
+                import json
+                json.dump(metadata, f, ensure_ascii=False, indent=2)
+            
+            print(f"✅ Metadatos guardados: {metadata_nuevo}")
+            
+        except Exception as meta_error:
+            print(f"⚠️ Error al actualizar metadatos de descarga activa: {meta_error}")
         
         print(f"✅ Descarga activa renombrada exitosamente a: {nuevo_nombre_limpio}")
         
