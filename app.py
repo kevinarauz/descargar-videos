@@ -3658,34 +3658,59 @@ def renombrar_archivo(filename):
         metadata_original = os.path.join(static_dir, f"{filename}.meta")
         metadata_nuevo = os.path.join(static_dir, f"{nuevo_nombre_limpio}.meta")
         
+        print(f"🔍 Verificando metadatos:")
+        print(f"   📋 Archivo original: {metadata_original}")
+        print(f"   📋 Archivo nuevo: {metadata_nuevo}")
+        print(f"   📋 Existe original: {os.path.exists(metadata_original)}")
+        
         if os.path.exists(metadata_original):
             try:
+                print(f"🔄 Iniciando proceso de metadatos...")
+                
                 # Cargar metadatos existentes
                 metadata = load_video_metadata(filename)
+                print(f"📋 Metadatos cargados: {metadata}")
+                
                 if metadata:
+                    print(f"📝 URL original: {metadata.get('url', 'NO ENCONTRADA')}")
+                    
                     # Actualizar solo el nombre, preservando toda la demás información
                     metadata['filename'] = nuevo_nombre_limpio
                     # Agregar información de renombrado
                     metadata['renamed_from'] = filename
-                    metadata['rename_date'] = time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
+                    metadata['rename_date'] = time.strftime('%Y-%m-%dT%H:%M:%S')
+                    
+                    print(f"📝 Metadatos actualizados: {metadata}")
                     
                     # Guardar metadatos actualizados
                     with open(metadata_nuevo, 'w', encoding='utf-8') as f:
                         import json
                         json.dump(metadata, f, ensure_ascii=False, indent=2)
                     
+                    print(f"✅ Archivo de metadatos nuevo creado: {metadata_nuevo}")
+                    
+                    # Verificar que se escribió correctamente
+                    if os.path.exists(metadata_nuevo):
+                        with open(metadata_nuevo, 'r', encoding='utf-8') as f:
+                            verificacion = json.load(f)
+                            print(f"🔍 Verificación - URL: {verificacion.get('url', 'NO ENCONTRADA')}")
+                    
                     # Eliminar archivo de metadatos original
                     os.remove(metadata_original)
-                    print(f"✅ Metadatos preservados y actualizados: {metadata_nuevo}")
+                    print(f"🗑️ Archivo de metadatos original eliminado: {metadata_original}")
                     
                     # Verificar que la URL se preservó
                     if 'url' in metadata:
-                        print(f"📋 URL preservada: {metadata['url']}")
+                        print(f"📋 URL preservada en memoria: {metadata['url']}")
                 else:
                     print(f"⚠️ No se pudieron cargar los metadatos de {filename}")
                     
             except Exception as meta_error:
                 print(f"⚠️ Error al actualizar metadatos: {meta_error}")
+                import traceback
+                print(f"Traceback completo: {traceback.format_exc()}")
+        else:
+            print(f"⚠️ No existe archivo de metadatos para: {filename}")
         
         return jsonify({
             'success': True, 
