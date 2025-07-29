@@ -1844,24 +1844,61 @@ function mostrarDescargaActiva(download_id, url) {
     let barra = document.createElement('div');
     barra.id = 'descarga-' + download_id;
     barra.className = 'descarga-item';
-    barra.setAttribute('data-download-id', download_id);  // Añadir para rastreo
-    barra.innerHTML = '<div>' +
-        '<span class="status-indicator status-downloading"></span>' +
-        '<strong id="archivo-' + download_id + '">Preparando descarga...</strong>' +
-        '</div>' +
-        '<div class="download-stats" id="stats-' + download_id + '">' +
-        'Inicializando...' +
-        '</div>' +
-        '<div class="mt-2 url-display small" id="url-' + download_id + '">' +
-        '<strong>URL:</strong> <span class="text-break">' + (url || 'N/A') + '</span>' +
-        '</div>' +
-        '<div>Progreso: <span id="progreso-' + download_id + '">0%</span></div>' +
-        '<div class="progress mb-2">' +
-        '<div class="progress-bar" id="bar-' + download_id + '" role="progressbar" style="width:0%"></div>' +
-        '</div>' +
-        '<div>' +
-        '<button class="btn btn-danger btn-sm" id="cancel-btn-' + download_id + '" onclick="cancelarDescarga(\\"' + download_id + '\\")">Cancelar</button>' +
-        '</div>';
+    barra.setAttribute('data-download-id', download_id);
+    
+    // Crear estructura usando createElement para evitar problemas de escape
+    // Contenedor principal del título
+    const titleDiv = document.createElement('div');
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'status-indicator status-downloading';
+    const titleStrong = document.createElement('strong');
+    titleStrong.id = 'archivo-' + download_id;
+    titleStrong.textContent = 'Preparando descarga...';
+    titleDiv.appendChild(statusSpan);
+    titleDiv.appendChild(titleStrong);
+    
+    // Stats div
+    const statsDiv = document.createElement('div');
+    statsDiv.className = 'download-stats';
+    statsDiv.id = 'stats-' + download_id;
+    statsDiv.textContent = 'Inicializando...';
+    
+    // URL div
+    const urlDiv = document.createElement('div');
+    urlDiv.className = 'mt-2 url-display small';
+    urlDiv.id = 'url-' + download_id;
+    urlDiv.innerHTML = '<strong>URL:</strong> <span class="text-break">' + (url || 'N/A') + '</span>';
+    
+    // Progreso text
+    const progressTextDiv = document.createElement('div');
+    progressTextDiv.innerHTML = 'Progreso: <span id="progreso-' + download_id + '">0%</span>';
+    
+    // Progress bar
+    const progressDiv = document.createElement('div');
+    progressDiv.className = 'progress mb-2';
+    const progressBar = document.createElement('div');
+    progressBar.className = 'progress-bar';
+    progressBar.id = 'bar-' + download_id;
+    progressBar.setAttribute('role', 'progressbar');
+    progressBar.style.width = '0%';
+    progressDiv.appendChild(progressBar);
+    
+    // Botón cancelar
+    const buttonDiv = document.createElement('div');
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-danger btn-sm';
+    cancelBtn.id = 'cancel-btn-' + download_id;
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.onclick = function() { cancelarDescarga(download_id); };
+    buttonDiv.appendChild(cancelBtn);
+    
+    // Agregar todo al contenedor principal
+    barra.appendChild(titleDiv);
+    barra.appendChild(statsDiv);
+    barra.appendChild(urlDiv);
+    barra.appendChild(progressTextDiv);
+    barra.appendChild(progressDiv);
+    barra.appendChild(buttonDiv);
     
     div.appendChild(barra);
     console.log('Creado nuevo elemento de descarga:', download_id);
@@ -2037,14 +2074,14 @@ function actualizarProgreso(download_id) {
                     </button>`;
             }
             
-            buttonsHtml += 
-                    '<button class="btn btn-success btn-sm me-2" onclick="reproducirUrlActiva(\\"' + download_id + '\\")" title="Reproducir video">' +
-                        'Reproducir' +
-                    '</button>' +
-                    '<button class="btn btn-outline-secondary btn-sm" onclick="eliminarDescargaActiva(\\"' + download_id + '\\")" title="Eliminar de la lista">' +
-                        'Quitar' +
-                    '</button>' +
-                '</div>';
+            buttonsHtml += `
+                    <button class="btn btn-success btn-sm me-2" onclick="reproducirUrlActiva('${download_id}')" title="Reproducir video">
+                        Reproducir
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="eliminarDescargaActiva('${download_id}')" title="Eliminar de la lista">
+                        Quitar
+                    </button>
+                </div>`;
                 
             let descargaElementCancelled = document.getElementById('descarga-' + download_id);
             if (descargaElementCancelled) {
@@ -2061,22 +2098,50 @@ function actualizarProgreso(download_id) {
             if (descargaElementPaused) {
                 // Verificar si ya tiene los botones de pausa para evitar duplicados
                 if (!descargaElementPaused.querySelector('.btn-info[title="Continuar descarga"]')) {
-                    descargaElementPaused.innerHTML += 
-                        '<div class="mt-2 text-info">Descarga pausada - puedes continuarla</div>' +
-                        '<div class="mt-2 url-display small">' +
-                            '<strong>URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>' +
-                        '</div>' +
-                        '<div class="mt-2 paused-controls">' +
-                            '<button class="btn btn-info btn-sm me-2" onclick="reanudarDescarga(\\"' + download_id + '\\")" title="Continuar descarga">' +
-                                'Continuar' +
-                            '</button>' +
-                            '<button class="btn btn-success btn-sm me-2" onclick="reproducirUrlActiva(\\"' + download_id + '\\")" title="Reproducir video">' +
-                                'Reproducir' +
-                            '</button>' +
-                            '<button class="btn btn-outline-secondary btn-sm" onclick="eliminarDescargaActiva(\\"' + download_id + '\\")" title="Eliminar de la lista">' +
-                                'Quitar' +
-                            '</button>' +
-                        '</div>';
+                    // Crear los botones de forma más segura
+                    const pausedControlsDiv = document.createElement('div');
+                    pausedControlsDiv.className = 'mt-2 paused-controls';
+                    
+                    // Mensaje de pausa
+                    const pausedMessage = document.createElement('div');
+                    pausedMessage.className = 'mt-2 text-info';
+                    pausedMessage.textContent = 'Descarga pausada - puedes continuarla';
+                    
+                    // URL display
+                    const urlDiv = document.createElement('div');
+                    urlDiv.className = 'mt-2 url-display small';
+                    urlDiv.innerHTML = '<strong>URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>';
+                    
+                    // Botón Continuar
+                    const continueBtn = document.createElement('button');
+                    continueBtn.className = 'btn btn-info btn-sm me-2';
+                    continueBtn.textContent = 'Continuar';
+                    continueBtn.title = 'Continuar descarga';
+                    continueBtn.onclick = function() { reanudarDescarga(download_id); };
+                    
+                    // Botón Reproducir
+                    const playBtn = document.createElement('button');
+                    playBtn.className = 'btn btn-success btn-sm me-2';
+                    playBtn.textContent = 'Reproducir';
+                    playBtn.title = 'Reproducir video';
+                    playBtn.onclick = function() { reproducirUrlActiva(download_id); };
+                    
+                    // Botón Quitar
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'btn btn-outline-secondary btn-sm';
+                    removeBtn.textContent = 'Quitar';
+                    removeBtn.title = 'Eliminar de la lista';
+                    removeBtn.onclick = function() { eliminarDescargaActiva(download_id); };
+                    
+                    // Agregar botones al contenedor
+                    pausedControlsDiv.appendChild(continueBtn);
+                    pausedControlsDiv.appendChild(playBtn);
+                    pausedControlsDiv.appendChild(removeBtn);
+                    
+                    // Agregar todo al elemento
+                    descargaElementPaused.appendChild(pausedMessage);
+                    descargaElementPaused.appendChild(urlDiv);
+                    descargaElementPaused.appendChild(pausedControlsDiv);
                 }
             }
         }
