@@ -3232,7 +3232,7 @@ def descargar():
             downloader = M3U8Downloader(
                 m3u8_url=m3u8_url, 
                 output_filename=output_file, 
-                max_workers=50,  # Aumentado para internet súper rápido
+                max_workers=700,  # Aumentado para internet súper rápido
                 temp_dir=temp_dir
             )
             segment_urls = downloader._get_segment_urls()
