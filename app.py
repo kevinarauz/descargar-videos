@@ -832,10 +832,10 @@ default_html = '''
                       ▶️
                     </button>
                     {% endif %}
-                    <button class="btn btn-outline-warning btn-sm mb-1" onclick="renombrarArchivo('{{item.archivo}}')" title="Renombrar archivo">
+                    <button class="btn btn-outline-warning btn-sm mb-1" data-filename="{{item.archivo|e}}" onclick="renombrarArchivoFromData(this)" title="Renombrar archivo">
                       ✏️
                     </button>
-                    <button class="btn btn-outline-danger btn-sm" onclick="eliminarArchivo('{{item.archivo}}')" title="Eliminar archivo">
+                    <button class="btn btn-outline-danger btn-sm" data-filename="{{item.archivo|e}}" onclick="eliminarArchivoFromData(this)" title="Eliminar archivo">
                       🗑️
                     </button>
                   </div>
@@ -1188,27 +1188,96 @@ function pausarDescarga(download_id) {
 
 // Función para renombrar archivo
 function renombrarArchivo(filename) {
-    const nuevoNombre = prompt('Nuevo nombre para el archivo (sin extensión):', filename.replace('.mp4', ''));
+    console.log('🔄 Iniciando renombrado para:', filename);
     
-    if (nuevoNombre && nuevoNombre.trim() !== '' && nuevoNombre !== filename.replace('.mp4', '')) {
-        fetch('/renombrar/' + encodeURIComponent(filename), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nuevo_nombre: nuevoNombre.trim() })
-        }).then(r => r.json()).then(data => {
-            if (data.success) {
-                showNotification('Archivo renombrado correctamente', 'success');
-                
-                // Actualizar el historial cuando se renombre un archivo
-                setTimeout(function() {
-                    updateHistorial();
-                }, 500);
-            } else {
-                showNotification('Error al renombrar: ' + data.error, 'danger');
-            }
-        }).catch(error => {
-            showNotification('Error al renombrar: ' + error.message, 'danger');
-        });
+    const nombreActual = filename.replace('.mp4', '');
+    const nuevoNombre = prompt('Nuevo nombre para el archivo (sin extensión):', nombreActual);
+    
+    if (nuevoNombre === null) {
+        console.log('❌ Renombrado cancelado por el usuario');
+        return;
+    }
+    
+    const nuevoNombreLimpio = nuevoNombre.trim();
+    
+    if (!nuevoNombreLimpio) {
+        showNotification('❌ El nuevo nombre no puede estar vacío', 'danger');
+        return;
+    }
+    
+    if (nuevoNombreLimpio === nombreActual) {
+        console.log('ℹ️ El nuevo nombre es igual al actual, no se hace nada');
+        return;
+    }
+    
+    console.log('📤 Enviando solicitud de renombrado:', {
+        archivo_original: filename,
+        nuevo_nombre: nuevoNombreLimpio
+    });
+    
+    // Mostrar indicador de carga
+    showNotification('🔄 Renombrando archivo...', 'info');
+    
+    fetch('/renombrar/' + encodeURIComponent(filename), {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({ nuevo_nombre: nuevoNombreLimpio })
+    })
+    .then(response => {
+        console.log('📥 Respuesta recibida:', response.status, response.statusText);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        return response.json();
+    })
+    .then(data => {
+        console.log('📄 Datos de respuesta:', data);
+        
+        if (data.success) {
+            showNotification(`✅ Archivo renombrado a: ${data.nuevo_nombre}`, 'success');
+            console.log('✅ Renombrado exitoso:', data.message);
+            
+            // Actualizar el historial cuando se renombre un archivo
+            setTimeout(function() {
+                console.log('🔄 Actualizando historial...');
+                updateHistorial();
+            }, 500);
+        } else {
+            const errorMsg = data.error || 'Error desconocido';
+            console.error('❌ Error del servidor:', errorMsg);
+            showNotification(`❌ Error al renombrar: ${errorMsg}`, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('❌ Error de red o JavaScript:', error);
+        showNotification(`❌ Error de conexión: ${error.message}`, 'danger');
+    });
+}
+
+// Función para renombrar archivo usando data-filename (versión segura)
+function renombrarArchivoFromData(button) {
+    const filename = button.getAttribute('data-filename');
+    if (filename) {
+        renombrarArchivo(filename);
+    } else {
+        console.error('❌ No se encontró data-filename en el botón');
+        showNotification('❌ Error: No se pudo obtener el nombre del archivo', 'danger');
+    }
+}
+
+// Función para eliminar archivo usando data-filename (versión segura)
+function eliminarArchivoFromData(button) {
+    const filename = button.getAttribute('data-filename');
+    if (filename) {
+        eliminarArchivo(filename);
+    } else {
+        console.error('❌ No se encontró data-filename en el botón');
+        showNotification('❌ Error: No se pudo obtener el nombre del archivo', 'danger');
     }
 }
 
@@ -1590,10 +1659,10 @@ function updateHistorial() {
                                '<button class="btn btn-outline-success btn-sm mb-1" data-url="' + (item.url || '') + '" onclick="reproducirUrlFromData(this)" title="Reproducir video">' +
                                'Play' +
                                '</button>' +
-                               '<button class="btn btn-outline-warning btn-sm mb-1" onclick="renombrarArchivo(\\"' + item.archivo + '\\")" title="Renombrar archivo">' +
+                               '<button class="btn btn-outline-warning btn-sm mb-1" data-filename="' + item.archivo.replace(/"/g, '&quot;') + '" onclick="renombrarArchivoFromData(this)" title="Renombrar archivo">' +
                                'Renombrar' +
                                '</button>' +
-                               '<button class="btn btn-outline-danger btn-sm" onclick="eliminarArchivo(\\"' + item.archivo + '\\")" title="Eliminar archivo">' +
+                               '<button class="btn btn-outline-danger btn-sm" data-filename="' + item.archivo.replace(/"/g, '&quot;') + '" onclick="eliminarArchivoFromData(this)" title="Eliminar archivo">' +
                                'Eliminar' +
                                '</button>' +
                                '</div></li>';
@@ -2608,8 +2677,41 @@ def is_valid_m3u8_url(url):
     return re.match(pattern, url) is not None
 
 def sanitize_filename(filename):
-    """Limpia el nombre del archivo de caracteres no seguros"""
-    return re.sub(r'[^\w\-. ]', '', filename).strip()
+    """Limpia el nombre del archivo de caracteres no seguros para Windows"""
+    import re
+    
+    # Caracteres prohibidos en Windows: < > : " | ? * \ /
+    # También eliminar caracteres de control (ASCII 0-31)
+    forbidden_chars = r'[<>:"|?*\\/]'
+    
+    # Reemplazar caracteres prohibidos con guión bajo
+    cleaned = re.sub(forbidden_chars, '_', filename)
+    
+    # Eliminar caracteres de control ASCII (0-31)
+    cleaned = re.sub(r'[\x00-\x1f]', '', cleaned)
+    
+    # Eliminar espacios al inicio y final
+    cleaned = cleaned.strip()
+    
+    # Eliminar puntos al final (Windows no los permite)
+    cleaned = cleaned.rstrip('.')
+    
+    # Verificar nombres reservados de Windows
+    reserved_names = [
+        'CON', 'PRN', 'AUX', 'NUL',
+        'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+        'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'
+    ]
+    
+    name_without_ext = cleaned.rsplit('.', 1)[0] if '.' in cleaned else cleaned
+    if name_without_ext.upper() in reserved_names:
+        cleaned = f"_{cleaned}"
+    
+    # Si el nombre queda vacío, usar un nombre por defecto
+    if not cleaned or cleaned.isspace():
+        cleaned = "video_sin_nombre"
+    
+    return cleaned
 
 def extract_m3u8_metadata(m3u8_url):
     """Extrae metadatos útiles del archivo M3U8 para nombrar automáticamente"""
@@ -3233,51 +3335,84 @@ def renombrar_archivo(filename):
         if not nuevo_nombre:
             return jsonify({'success': False, 'error': 'Nuevo nombre no proporcionado.'}), 400
         
+        print(f"🔄 Renombrando '{filename}' a '{nuevo_nombre}'")
+        
         # Sanitizar el nuevo nombre
-        nuevo_nombre = sanitize_filename(nuevo_nombre)
-        if not nuevo_nombre.lower().endswith('.mp4'):
-            nuevo_nombre += '.mp4'
+        nuevo_nombre_limpio = sanitize_filename(nuevo_nombre)
+        print(f"📝 Nombre sanitizado: '{nuevo_nombre_limpio}'")
+        
+        if not nuevo_nombre_limpio.lower().endswith('.mp4'):
+            nuevo_nombre_limpio += '.mp4'
+        
+        # Validar que el nuevo nombre es válido
+        if len(nuevo_nombre_limpio) > 255:
+            return jsonify({'success': False, 'error': 'El nombre del archivo es demasiado largo (máximo 255 caracteres).'}), 400
         
         # Validar que el archivo original existe
         static_dir = os.path.join(os.path.dirname(__file__), 'static')
         archivo_original = os.path.join(static_dir, filename)
         
+        print(f"📂 Verificando archivo original: {archivo_original}")
+        
         if not os.path.exists(archivo_original):
-            return jsonify({'success': False, 'error': 'El archivo no existe.'}), 404
+            return jsonify({'success': False, 'error': f'El archivo "{filename}" no existe en el directorio static.'}), 404
         
         # Verificar que el nuevo nombre no existe
-        archivo_nuevo = os.path.join(static_dir, nuevo_nombre)
+        archivo_nuevo = os.path.join(static_dir, nuevo_nombre_limpio)
+        print(f"📂 Archivo destino: {archivo_nuevo}")
+        
         if os.path.exists(archivo_nuevo):
-            return jsonify({'success': False, 'error': 'Ya existe un archivo con ese nombre.'}), 400
+            return jsonify({'success': False, 'error': f'Ya existe un archivo con el nombre "{nuevo_nombre_limpio}".'}), 400
+        
+        # Verificar permisos de escritura
+        try:
+            import tempfile
+            test_file = os.path.join(static_dir, f"test_permisos_{int(time.time())}.tmp")
+            with open(test_file, 'w') as f:
+                f.write("test")
+            os.remove(test_file)
+        except Exception as perm_error:
+            return jsonify({'success': False, 'error': f'Sin permisos de escritura en el directorio: {str(perm_error)}'}), 500
         
         # Renombrar el archivo
-        os.rename(archivo_original, archivo_nuevo)
+        try:
+            os.rename(archivo_original, archivo_nuevo)
+            print(f"✅ Archivo renombrado exitosamente")
+        except OSError as os_error:
+            error_msg = f"Error del sistema al renombrar: {str(os_error)}"
+            print(f"❌ {error_msg}")
+            return jsonify({'success': False, 'error': error_msg}), 500
         
         # Renombrar también el archivo de metadatos si existe
         metadata_original = os.path.join(static_dir, f"{filename}.meta")
-        metadata_nuevo = os.path.join(static_dir, f"{nuevo_nombre}.meta")
+        metadata_nuevo = os.path.join(static_dir, f"{nuevo_nombre_limpio}.meta")
         
         if os.path.exists(metadata_original):
             try:
                 # Actualizar el contenido del metadata con el nuevo nombre
                 metadata = load_video_metadata(filename)
                 if metadata:
-                    metadata['filename'] = nuevo_nombre
+                    metadata['filename'] = nuevo_nombre_limpio
                     with open(metadata_nuevo, 'w', encoding='utf-8') as f:
                         import json
                         json.dump(metadata, f, ensure_ascii=False, indent=2)
                 os.remove(metadata_original)
+                print(f"✅ Metadatos actualizados")
             except Exception as meta_error:
-                print(f"Error al actualizar metadatos: {meta_error}")
+                print(f"⚠️ Error al actualizar metadatos: {meta_error}")
         
         return jsonify({
             'success': True, 
-            'message': f'Archivo renombrado de "{filename}" a "{nuevo_nombre}"',
-            'nuevo_nombre': nuevo_nombre
+            'message': f'Archivo renombrado de "{filename}" a "{nuevo_nombre_limpio}"',
+            'nuevo_nombre': nuevo_nombre_limpio
         })
         
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Error al renombrar: {str(e)}'}), 500
+        error_msg = f'Error al renombrar: {str(e)}'
+        print(f"❌ {error_msg}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': error_msg}), 500
 
 @app.route('/static/<path:filename>', methods=['GET'])
 def serve_static(filename):
