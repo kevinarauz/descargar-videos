@@ -2119,45 +2119,85 @@ function actualizarProgreso(download_id) {
             showNotification('Error en descarga: ' + data.error, 'danger');
         } else if (data.status === 'cancelled') {
             if (archivo) archivo.innerHTML = '<span class="status-indicator status-cancelled"></span>Descarga cancelada';
-            if (cancelBtn) cancelBtn.style.display = 'none';
-            if (descargaDiv) descargaDiv.className += ' descarga-cancelled';
+            if (descargaDiv) descargaDiv.className = 'descarga-item descarga-cancelled';
             if (stats) stats.innerText = 'Cancelado por el usuario';
             
-            let buttonsHtml = `
-                <div class='mt-2 text-warning'>Descarga cancelada por el usuario</div>
-                <div class='mt-2 url-display small'>
-                    <strong>🔗 URL:</strong> <span class="text-break">${data.url || 'N/A'}</span>
-                </div>
-                <div class='mt-2'>
-                    <button class='btn btn-warning btn-sm me-2' onclick='reintentarDescarga("${download_id}")' title='Reintentar descarga'>
-                        🔄 Reintentar
-                    </button>`;
+            // Ocultar botones de descarga activa
+            let playBtn = document.getElementById('play-btn-' + download_id);
+            let pauseBtn = document.getElementById('pause-btn-' + download_id);
+            let cancelBtn = document.getElementById('cancel-btn-' + download_id);
             
-            // Añadir botón de reanudar si es posible
-            if (data.can_resume) {
-                buttonsHtml += `
-                    <button class='btn btn-info btn-sm me-2' onclick='reanudarDescarga("${download_id}")' title='Reanudar descarga'>
-                        ▶️ Continuar
-                    </button>`;
-            }
+            if (playBtn) playBtn.style.display = 'none';
+            if (pauseBtn) pauseBtn.style.display = 'none';
+            if (cancelBtn) cancelBtn.style.display = 'none';
             
-            buttonsHtml += `
-                    <button class="btn btn-success btn-sm me-2" onclick="reproducirUrlActiva('${download_id}')" title="Reproducir video">
-                        Reproducir
-                    </button>
-                    <button class="btn btn-outline-secondary btn-sm" onclick="eliminarDescargaActiva('${download_id}')" title="Eliminar de la lista">
-                        Quitar
-                    </button>
-                </div>`;
-                
             let descargaElementCancelled = document.getElementById('descarga-' + download_id);
             if (descargaElementCancelled) {
-                descargaElementCancelled.innerHTML += buttonsHtml;
+                // Eliminar controles existentes para evitar duplicados
+                const existingControls = descargaElementCancelled.querySelectorAll('.text-warning, .url-display');
+                const existingButtons = descargaElementCancelled.querySelectorAll('.btn-warning, .btn-info, .btn-success, .btn-outline-secondary');
+                existingControls.forEach(el => el.remove());
+                existingButtons.forEach(el => {
+                    if (el.id !== 'play-btn-' + download_id && el.id !== 'pause-btn-' + download_id && el.id !== 'cancel-btn-' + download_id) {
+                        el.parentElement.remove(); // Remover el contenedor del botón
+                    }
+                });
+                
+                // Crear nuevos controles usando createElement
+                const cancelledMessage = document.createElement('div');
+                cancelledMessage.className = 'mt-2 text-warning';
+                cancelledMessage.textContent = 'Descarga cancelada por el usuario';
+                
+                const urlDiv = document.createElement('div');
+                urlDiv.className = 'mt-2 url-display small';
+                urlDiv.innerHTML = '<strong>🔗 URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>';
+                
+                const buttonContainer = document.createElement('div');
+                buttonContainer.className = 'mt-2';
+                
+                // Botón Reintentar
+                const retryBtn = document.createElement('button');
+                retryBtn.className = 'btn btn-warning btn-sm me-2';
+                retryBtn.innerHTML = '🔄 Reintentar';
+                retryBtn.title = 'Reintentar descarga';
+                retryBtn.onclick = function() { reintentarDescarga(download_id); };
+                buttonContainer.appendChild(retryBtn);
+                
+                // Botón Continuar (si es posible)
+                if (data.can_resume) {
+                    const continueBtn = document.createElement('button');
+                    continueBtn.className = 'btn btn-info btn-sm me-2';
+                    continueBtn.innerHTML = '▶️ Continuar';
+                    continueBtn.title = 'Reanudar descarga';
+                    continueBtn.onclick = function() { reanudarDescarga(download_id); };
+                    buttonContainer.appendChild(continueBtn);
+                }
+                
+                // Botón Reproducir
+                const playBtnCancelled = document.createElement('button');
+                playBtnCancelled.className = 'btn btn-success btn-sm me-2';
+                playBtnCancelled.textContent = 'Reproducir';
+                playBtnCancelled.title = 'Reproducir video';
+                playBtnCancelled.onclick = function() { reproducirUrlActiva(download_id); };
+                buttonContainer.appendChild(playBtnCancelled);
+                
+                // Botón Quitar
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'btn btn-outline-secondary btn-sm';
+                removeBtn.textContent = 'Quitar';
+                removeBtn.title = 'Eliminar de la lista';
+                removeBtn.onclick = function() { eliminarDescargaActiva(download_id); };
+                buttonContainer.appendChild(removeBtn);
+                
+                // Agregar todo al elemento
+                descargaElementCancelled.appendChild(cancelledMessage);
+                descargaElementCancelled.appendChild(urlDiv);
+                descargaElementCancelled.appendChild(buttonContainer);
             }
             showNotification('Descarga cancelada', 'warning');
         } else if (data.status === 'paused') {
             if (archivo) archivo.innerHTML = '<span class="status-indicator status-cancelled"></span>Descarga pausada';
-            if (descargaDiv) descargaDiv.className += ' descarga-cancelled';
+            if (descargaDiv) descargaDiv.className = 'descarga-item descarga-cancelled';
             if (stats) stats.innerText = 'Pausada - se puede reanudar';
             
             // Ocultar botones de descarga activa
@@ -2171,53 +2211,54 @@ function actualizarProgreso(download_id) {
             
             let descargaElementPaused = document.getElementById('descarga-' + download_id);
             if (descargaElementPaused) {
-                // Verificar si ya tiene los botones de pausa para evitar duplicados
-                if (!descargaElementPaused.querySelector('.btn-info[title="Continuar descarga"]')) {
-                    // Crear los botones de forma más segura
-                    const pausedControlsDiv = document.createElement('div');
-                    pausedControlsDiv.className = 'mt-2 paused-controls';
-                    
-                    // Mensaje de pausa
-                    const pausedMessage = document.createElement('div');
-                    pausedMessage.className = 'mt-2 text-info';
-                    pausedMessage.textContent = 'Descarga pausada - puedes continuarla';
-                    
-                    // URL display
-                    const urlDiv = document.createElement('div');
-                    urlDiv.className = 'mt-2 url-display small';
-                    urlDiv.innerHTML = '<strong>URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>';
-                    
-                    // Botón Continuar
-                    const continueBtn = document.createElement('button');
-                    continueBtn.className = 'btn btn-info btn-sm me-2';
-                    continueBtn.textContent = 'Continuar';
-                    continueBtn.title = 'Continuar descarga';
-                    continueBtn.onclick = function() { reanudarDescarga(download_id); };
-                    
-                    // Botón Reproducir
-                    const playBtn = document.createElement('button');
-                    playBtn.className = 'btn btn-success btn-sm me-2';
-                    playBtn.textContent = 'Reproducir';
-                    playBtn.title = 'Reproducir video';
-                    playBtn.onclick = function() { reproducirUrlActiva(download_id); };
-                    
-                    // Botón Quitar
-                    const removeBtn = document.createElement('button');
-                    removeBtn.className = 'btn btn-outline-secondary btn-sm';
-                    removeBtn.textContent = 'Quitar';
-                    removeBtn.title = 'Eliminar de la lista';
-                    removeBtn.onclick = function() { eliminarDescargaActiva(download_id); };
-                    
-                    // Agregar botones al contenedor
-                    pausedControlsDiv.appendChild(continueBtn);
-                    pausedControlsDiv.appendChild(playBtn);
-                    pausedControlsDiv.appendChild(removeBtn);
-                    
-                    // Agregar todo al elemento
-                    descargaElementPaused.appendChild(pausedMessage);
-                    descargaElementPaused.appendChild(urlDiv);
-                    descargaElementPaused.appendChild(pausedControlsDiv);
-                }
+                // Eliminar controles de pausa existentes para evitar duplicados
+                const existingPausedControls = descargaElementPaused.querySelectorAll('.paused-controls, .text-info, .url-display');
+                existingPausedControls.forEach(el => el.remove());
+                
+                // Crear los nuevos controles de pausa
+                const pausedControlsDiv = document.createElement('div');
+                pausedControlsDiv.className = 'mt-2 paused-controls';
+                
+                // Mensaje de pausa
+                const pausedMessage = document.createElement('div');
+                pausedMessage.className = 'mt-2 text-info';
+                pausedMessage.textContent = 'Descarga pausada - puedes continuarla';
+                
+                // URL display
+                const urlDiv = document.createElement('div');
+                urlDiv.className = 'mt-2 url-display small';
+                urlDiv.innerHTML = '<strong>URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>';
+                
+                // Botón Continuar
+                const continueBtn = document.createElement('button');
+                continueBtn.className = 'btn btn-info btn-sm me-2';
+                continueBtn.textContent = 'Continuar';
+                continueBtn.title = 'Continuar descarga';
+                continueBtn.onclick = function() { reanudarDescarga(download_id); };
+                
+                // Botón Reproducir
+                const playBtnPaused = document.createElement('button');
+                playBtnPaused.className = 'btn btn-success btn-sm me-2';
+                playBtnPaused.textContent = 'Reproducir';
+                playBtnPaused.title = 'Reproducir video';
+                playBtnPaused.onclick = function() { reproducirUrlActiva(download_id); };
+                
+                // Botón Quitar
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'btn btn-outline-secondary btn-sm';
+                removeBtn.textContent = 'Quitar';
+                removeBtn.title = 'Eliminar de la lista';
+                removeBtn.onclick = function() { eliminarDescargaActiva(download_id); };
+                
+                // Agregar botones al contenedor
+                pausedControlsDiv.appendChild(continueBtn);
+                pausedControlsDiv.appendChild(playBtnPaused);
+                pausedControlsDiv.appendChild(removeBtn);
+                
+                // Agregar todo al elemento
+                descargaElementPaused.appendChild(pausedMessage);
+                descargaElementPaused.appendChild(urlDiv);
+                descargaElementPaused.appendChild(pausedControlsDiv);
             }
         }
     }).catch(error => {
