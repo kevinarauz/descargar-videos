@@ -1188,13 +1188,10 @@ function pausarDescarga(download_id) {
 
 // Función para renombrar archivo
 function renombrarArchivo(filename) {
-    console.log('🔄 Iniciando renombrado para:', filename);
-    
     const nombreActual = filename.replace('.mp4', '');
     const nuevoNombre = prompt('Nuevo nombre para el archivo (sin extensión):', nombreActual);
-    
+
     if (nuevoNombre === null) {
-        console.log('❌ Renombrado cancelado por el usuario');
         return;
     }
     
@@ -1206,14 +1203,8 @@ function renombrarArchivo(filename) {
     }
     
     if (nuevoNombreLimpio === nombreActual) {
-        console.log('ℹ️ El nuevo nombre es igual al actual, no se hace nada');
         return;
     }
-    
-    console.log('📤 Enviando solicitud de renombrado:', {
-        archivo_original: filename,
-        nuevo_nombre: nuevoNombreLimpio
-    });
     
     // Mostrar indicador de carga
     showNotification('🔄 Renombrando archivo...', 'info');
@@ -1227,34 +1218,26 @@ function renombrarArchivo(filename) {
         body: JSON.stringify({ nuevo_nombre: nuevoNombreLimpio })
     })
     .then(response => {
-        console.log('📥 Respuesta recibida:', response.status, response.statusText);
-        
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
         return response.json();
     })
     .then(data => {
-        console.log('📄 Datos de respuesta:', data);
-        
         if (data.success) {
             showNotification(`✅ Archivo renombrado a: ${data.nuevo_nombre}`, 'success');
-            console.log('✅ Renombrado exitoso:', data.message);
             
             // Actualizar el historial cuando se renombre un archivo
             setTimeout(function() {
-                console.log('🔄 Actualizando historial...');
                 updateHistorial();
             }, 500);
         } else {
             const errorMsg = data.error || 'Error desconocido';
-            console.error('❌ Error del servidor:', errorMsg);
             showNotification(`❌ Error al renombrar: ${errorMsg}`, 'danger');
         }
     })
     .catch(error => {
-        console.error('❌ Error de red o JavaScript:', error);
+        console.error('Error en renombrado:', error);
         showNotification(`❌ Error de conexión: ${error.message}`, 'danger');
     });
 }
@@ -1283,12 +1266,9 @@ function eliminarArchivoFromData(button) {
 
 // Función para renombrar descarga activa mientras se está descargando
 function renombrarDescargaActiva(download_id) {
-    console.log('🔄 Iniciando renombrado de descarga activa:', download_id);
-    
     // Obtener el nombre actual del archivo
     const archivoElement = document.getElementById('archivo-' + download_id);
     if (!archivoElement) {
-        console.error('❌ No se encontró el elemento del archivo para:', download_id);
         showNotification('❌ Error: No se pudo obtener la información de la descarga', 'danger');
         return;
     }
@@ -1299,7 +1279,6 @@ function renombrarDescargaActiva(download_id) {
     const nuevoNombre = prompt('Nuevo nombre para el archivo (sin extensión):', nombreSinExtension);
     
     if (nuevoNombre === null) {
-        console.log('❌ Renombrado cancelado por el usuario');
         return;
     }
     
@@ -1311,7 +1290,6 @@ function renombrarDescargaActiva(download_id) {
     }
     
     if (nuevoNombreLimpio === nombreSinExtension) {
-        console.log('ℹ️ El nuevo nombre es igual al actual, no se hace nada');
         return;
     }
     
@@ -1714,15 +1692,10 @@ function loadActiveDownloads() {
 
 // Función para actualizar el historial dinámicamente
 function updateHistorial() {
-    console.log('🔄 Actualizando historial...');
     fetch('/api/historial')
         .then(r => r.json())
         .then(data => {
-            console.log('📥 Respuesta del historial:', data);
-            
             if (data.success && data.historial) {
-                console.log(`📊 Procesando ${data.historial.length} archivos en historial`);
-                
                 const historialContainer = document.getElementById('historial-container');
                 
                 if (data.historial.length === 0) {
@@ -1731,11 +1704,6 @@ function updateHistorial() {
                     let html = '<ul id="historial-list">';
                     
                     data.historial.forEach((item, index) => {
-                        console.log(`📄 Archivo ${index + 1}: ${item.archivo} - URL: ${item.url ? '✅' : '❌'}`);
-                        if (item.url) {
-                            console.log(`   🌐 URL: ${item.url}`);
-                        }
-                        
                         html += '<li class="d-flex justify-content-between align-items-center mb-2 historial-item" ' +
                                'data-filename="' + item.archivo.toLowerCase() + '" ' +
                                'data-date="' + (item.fecha_timestamp || 0) + '" ' +
@@ -1746,12 +1714,9 @@ function updateHistorial() {
                                item.tamaño + ' • ' + item.fecha;
                         
                         if (item.url) {
-                            console.log(`   ➕ Agregando URL al HTML para ${item.archivo}`);
                             html += '<br><small class="url-metadata">' +
                                    '<span class="text-break" style="font-size: 0.75em;">🔗 ' + item.url + '</span>' +
                                    '</small>';
-                        } else {
-                            console.log(`   ⚠️ URL faltante para ${item.archivo}`);
                         }
                         
                         html += '</div></div>' +
@@ -1773,14 +1738,12 @@ function updateHistorial() {
                     
                     html += '</ul>';
                     historialContainer.innerHTML = html;
-                    console.log('✅ HTML del historial actualizado');
                 }
                 
                 // Actualizar contador de descargas totales
                 const totalElement = document.getElementById('total-downloads');
                 if (totalElement) {
                     totalElement.textContent = data.historial.length;
-                    console.log(`📊 Contador actualizado: ${data.historial.length} descargas`);
                 }
             } else {
                 console.error('❌ Error en respuesta del historial:', data);
