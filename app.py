@@ -3207,7 +3207,7 @@ def descargar():
             'can_resume': False,
             'downloaded_segments': [],
             'bytes_downloaded': 0,
-            'download_speed': 0,  # MB/s
+            'download_speed': 0.0,  # Inicializado como float
             'last_update_time': time.time(),
             'last_bytes': 0
         }
@@ -3261,10 +3261,13 @@ def descargar():
                     segment_start_time = time.time()
                     
                     # Descargar segmento y obtener tamaño
-                    segment_name, bytes_downloaded = downloader._download_segment(url, i)
+                    result = downloader._download_segment(url, i)
                     
-                    if not segment_name:
+                    # Verificar que el resultado es válido
+                    if not result or result[0] is None:
                         raise Exception("No se pudo descargar el segmento")
+                    
+                    segment_name, bytes_downloaded = result
                     
                     seg_path = os.path.join(temp_dir, f'segment_{i:05d}.ts')
                     if not os.path.exists(seg_path):
@@ -3274,21 +3277,23 @@ def descargar():
                     current_time = time.time()
                     time_diff = current_time - multi_progress[download_id]['last_update_time']
                     
-                    if time_diff > 0:
+                    if time_diff > 0 and isinstance(bytes_downloaded, (int, float)) and bytes_downloaded > 0:
                         # Actualizar bytes totales descargados
                         multi_progress[download_id]['bytes_downloaded'] += bytes_downloaded
                         
                         # Calcular velocidad en MB/s
-                        bytes_per_second = bytes_downloaded / (current_time - segment_start_time)
-                        speed_mbps = bytes_per_second / (1024 * 1024)  # Convertir a MB/s
-                        
-                        # Usar promedio móvil para suavizar la velocidad
-                        current_speed = multi_progress[download_id]['download_speed']
-                        if current_speed == 0:
-                            multi_progress[download_id]['download_speed'] = speed_mbps
-                        else:
-                            # Promedio móvil con factor 0.3 para suavizar
-                            multi_progress[download_id]['download_speed'] = (current_speed * 0.7) + (speed_mbps * 0.3)
+                        segment_duration = current_time - segment_start_time
+                        if segment_duration > 0:
+                            bytes_per_second = bytes_downloaded / segment_duration
+                            speed_mbps = bytes_per_second / (1024 * 1024)  # Convertir a MB/s
+                            
+                            # Usar promedio móvil para suavizar la velocidad
+                            current_speed = multi_progress[download_id]['download_speed']
+                            if current_speed == 0:
+                                multi_progress[download_id]['download_speed'] = speed_mbps
+                            else:
+                                # Promedio móvil con factor 0.3 para suavizar
+                                multi_progress[download_id]['download_speed'] = (current_speed * 0.7) + (speed_mbps * 0.3)
                         
                         multi_progress[download_id]['last_update_time'] = current_time
                     
