@@ -1131,8 +1131,19 @@ function filterHistorial() {
     });
 }
 
+// Función para limpiar notificaciones de una descarga específica
+function limpiarNotificacionesDescarga(download_id) {
+    const tiposNotificacion = ['_cancelled', '_completed', '_error', '_paused'];
+    tiposNotificacion.forEach(tipo => {
+        notificacionesMostradas.delete(download_id + tipo);
+    });
+}
+
 // Función para reanudar descarga
 function reanudarDescarga(download_id) {
+    // Limpiar notificaciones previas al reanudar
+    limpiarNotificacionesDescarga(download_id);
+    
     if (confirm('¿Reanudar esta descarga desde donde se quedó?')) {
         fetch('/reanudar/' + download_id, {
             method: 'POST'
@@ -1849,6 +1860,8 @@ document.getElementById('descargar-form').addEventListener('submit', function(e)
     }).then(r => r.json()).then(data => {
         if (data.download_id) {
             let url = document.getElementById('m3u8-url').value.trim();
+            // Limpiar notificaciones previas antes de iniciar una nueva descarga
+            limpiarNotificacionesDescarga(data.download_id);
             mostrarDescargaActiva(data.download_id, url);
             showNotification('Descarga iniciada', 'success');
         } else if (data.error) {
@@ -1978,6 +1991,9 @@ function actualizarTodasLasDescargas() {
     });
 }
 
+// Variable global para rastrear notificaciones ya mostradas
+const notificacionesMostradas = new Set();
+
 function actualizarProgreso(download_id) {
     // Validar que download_id existe y no es undefined
     if (!download_id || download_id === 'undefined') {
@@ -2069,7 +2085,13 @@ function actualizarProgreso(download_id) {
                         '</button>' +
                     '</div>';
             }
-            showNotification('Descarga completada: ' + data.output_file, 'success');
+            
+            // Mostrar notificación solo una vez
+            const notificationKey = download_id + '_completed';
+            if (!notificacionesMostradas.has(notificationKey)) {
+                notificacionesMostradas.add(notificationKey);
+                showNotification('Descarga completada: ' + data.output_file, 'success');
+            }
             
             // Actualizar el historial cuando se complete una descarga
             setTimeout(function() { 
@@ -2116,7 +2138,13 @@ function actualizarProgreso(download_id) {
             if (descargaElement) {
                 descargaElement.innerHTML += buttonsHtml;
             }
-            showNotification('Error en descarga: ' + data.error, 'danger');
+            
+            // Mostrar notificación solo una vez
+            const notificationKey = download_id + '_error';
+            if (!notificacionesMostradas.has(notificationKey)) {
+                notificacionesMostradas.add(notificationKey);
+                showNotification('Error en descarga: ' + data.error, 'danger');
+            }
         } else if (data.status === 'cancelled') {
             if (archivo) archivo.innerHTML = '<span class="status-indicator status-cancelled"></span>Descarga cancelada';
             if (descargaDiv) descargaDiv.className = 'descarga-item descarga-cancelled';
@@ -2194,7 +2222,13 @@ function actualizarProgreso(download_id) {
                 descargaElementCancelled.appendChild(urlDiv);
                 descargaElementCancelled.appendChild(buttonContainer);
             }
-            showNotification('Descarga cancelada', 'warning');
+            
+            // Mostrar notificación solo una vez
+            const notificationKey = download_id + '_cancelled';
+            if (!notificacionesMostradas.has(notificationKey)) {
+                notificacionesMostradas.add(notificationKey);
+                showNotification('Descarga cancelada', 'warning');
+            }
         } else if (data.status === 'paused') {
             if (archivo) archivo.innerHTML = '<span class="status-indicator status-cancelled"></span>Descarga pausada';
             if (descargaDiv) descargaDiv.className = 'descarga-item descarga-cancelled';
@@ -2306,6 +2340,9 @@ function eliminarArchivo(filename) {
 
 function eliminarDescargaActiva(download_id) {
     if (confirm('¿Quieres quitar esta descarga de la lista de descargas activas?')) {
+        // Limpiar notificaciones antes de eliminar
+        limpiarNotificacionesDescarga(download_id);
+        
         fetch('/eliminar_descarga/' + download_id, {
             method: 'DELETE'
         }).then(r => r.json()).then(data => {
