@@ -3228,11 +3228,11 @@ def descargar():
                 os.makedirs(temp_dir, exist_ok=True)
             original_dir = os.getcwd()
             
-            # Descarga de segmentos con directorio específico y calidad
+            # Descarga de segmentos con directorio específico y calidad optimizada
             downloader = M3U8Downloader(
                 m3u8_url=m3u8_url, 
                 output_filename=output_file, 
-                max_workers=20, 
+                max_workers=50,  # Aumentado para internet súper rápido
                 temp_dir=temp_dir
             )
             segment_urls = downloader._get_segment_urls()
