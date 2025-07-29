@@ -1367,6 +1367,72 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
+// Manejador global de errores para filtrar errores de extensiones de Chrome
+window.addEventListener('error', function(event) {
+    // Filtrar errores conocidos de extensiones de Chrome
+    const extensionErrors = [
+        'runtime.lastError',
+        'Extension context invalidated',
+        'message channel closed',
+        'ResizeObserver loop limit exceeded'
+    ];
+    
+    const isExtensionError = extensionErrors.some(errorText => 
+        event.message && event.message.includes(errorText)
+    );
+    
+    if (isExtensionError) {
+        // No mostrar estos errores al usuario, solo log silencioso
+        console.debug('Extension error filtered:', event.message);
+        event.preventDefault();
+        return true;
+    }
+    
+    // Para errores reales de nuestra aplicación, mantener el comportamiento normal
+    return false;
+});
+
+// Suprimir advertencias específicas de runtime.lastError en la consola
+const originalConsoleError = console.error;
+console.error = function(...args) {
+    const message = args.join(' ');
+    if (message.includes('runtime.lastError') || 
+        message.includes('message channel closed') ||
+        message.includes('Extension context invalidated')) {
+        // Silenciar estos errores específicos
+        return;
+    }
+    originalConsoleError.apply(console, args);
+};
+
+// Función para limpiar duplicados de descargas
+function cleanupDuplicateDownloads() {
+    const activasContainer = document.getElementById('descargas-activas');
+    const seenIds = new Set();
+    const elementsToRemove = [];
+    
+    activasContainer.querySelectorAll('[data-download-id]').forEach(el => {
+        const downloadId = el.dataset.downloadId;
+        if (seenIds.has(downloadId)) {
+            // Es un duplicado, marcarlo para eliminación
+            elementsToRemove.push(el);
+            console.log('Encontrado duplicado, marcando para eliminación:', downloadId);
+        } else {
+            seenIds.add(downloadId);
+        }
+    });
+    
+    // Eliminar duplicados
+    elementsToRemove.forEach(el => {
+        console.log('Eliminando elemento duplicado:', el.dataset.downloadId);
+        el.remove();
+    });
+    
+    if (elementsToRemove.length > 0) {
+        console.log(`Limpiados ${elementsToRemove.length} duplicados`);
+    }
+}
+
 // Inicialización al cargar la página
 document.addEventListener('DOMContentLoaded', function() {
     loadUserConfig();
@@ -1376,6 +1442,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Cargar descargas activas persistentes
     loadActiveDownloads();
+    
+    // Limpiar duplicados cada 10 segundos
+    setInterval(cleanupDuplicateDownloads, 10000);
     
     // Actualizar progreso cada 2 segundos
     setInterval(actualizarTodasLasDescargas, 2000);
@@ -1407,26 +1476,38 @@ function loadActiveDownloads() {
                 
                 // Obtener IDs ya mostrados para evitar duplicados
                 const existingIds = new Set();
+                const existingElements = new Map(); // Para mapear ID -> elemento
+                
                 activasContainer.querySelectorAll('[data-download-id]').forEach(el => {
-                    existingIds.add(el.dataset.downloadId);
+                    const downloadId = el.dataset.downloadId;
+                    existingIds.add(downloadId);
+                    existingElements.set(downloadId, el);
                 });
                 
-                // Añadir solo nuevas descargas activas
+                // Procesar descargas del servidor
+                const serverDownloadIds = new Set();
                 Object.keys(data.downloads).forEach(download_id => {
                     const download = data.downloads[download_id];
+                    serverDownloadIds.add(download_id);
+                    
                     if (['downloading', 'paused', 'error', 'cancelled'].includes(download.status)) {
                         if (!existingIds.has(download_id)) {
+                            // Solo crear nuevo elemento si NO existe
+                            console.log('Creando nueva descarga activa:', download_id);
                             mostrarDescargaActiva(download_id, download.url);
+                        } else {
+                            // Ya existe, solo actualizar si es necesario
+                            console.log('Descarga ya existe, saltando:', download_id);
                         }
                     }
                 });
                 
-                // Remover descargas que ya no están activas
-                activasContainer.querySelectorAll('[data-download-id]').forEach(el => {
-                    const downloadId = el.dataset.downloadId;
-                    if (!data.downloads[downloadId] || 
-                        data.downloads[downloadId].status === 'done') {
-                        el.remove();
+                // Remover descargas que ya no están en el servidor o están completas
+                existingElements.forEach((element, downloadId) => {
+                    if (!serverDownloadIds.has(downloadId) || 
+                        (data.downloads[downloadId] && data.downloads[downloadId].status === 'done')) {
+                        console.log('Removiendo descarga finalizada:', downloadId);
+                        element.remove();
                     }
                 });
             }
@@ -1535,11 +1616,20 @@ function extractMetadata() {
         if (data.success) {
             displayMetadata(data.metadata, data.suggested_filename);
             
+            // Mostrar advertencia si es un fallback
+            if (data.warning) {
+                showNotification(data.warning, 'warning');
+            }
+            
             // Auto-rellenar nombre si está vacío
             const nameInput = document.getElementById('output-name');
             if (!nameInput.value && data.suggested_filename) {
                 nameInput.value = data.suggested_filename;
-                showNotification('Nombre sugerido aplicado automáticamente', 'info');
+                if (!data.warning) {
+                    showNotification('Nombre sugerido aplicado automáticamente', 'info');
+                } else {
+                    showNotification('Nombre básico aplicado (metadatos no disponibles)', 'info');
+                }
             }
         } else {
             metadataContent.innerHTML = `
@@ -1743,6 +1833,13 @@ document.getElementById('descargar-form').addEventListener('submit', function(e)
 });
 
 function mostrarDescargaActiva(download_id, url) {
+    // Verificar si ya existe un elemento para esta descarga
+    const existingElement = document.getElementById('descarga-' + download_id);
+    if (existingElement) {
+        console.log('Elemento de descarga ya existe, no creando duplicado:', download_id);
+        return; // No crear duplicado
+    }
+    
     let div = document.getElementById('descargas-activas');
     let barra = document.createElement('div');
     barra.id = 'descarga-' + download_id;
@@ -1767,6 +1864,7 @@ function mostrarDescargaActiva(download_id, url) {
         '</div>';
     
     div.appendChild(barra);
+    console.log('Creado nuevo elemento de descarga:', download_id);
     
     if (url) {
         let urlDiv = document.getElementById('url-' + download_id);
@@ -1961,22 +2059,25 @@ function actualizarProgreso(download_id) {
             
             let descargaElementPaused = document.getElementById('descarga-' + download_id);
             if (descargaElementPaused) {
-                descargaElementPaused.innerHTML += 
-                    '<div class="mt-2 text-info">Descarga pausada - puedes continuarla</div>' +
-                    '<div class="mt-2 url-display small">' +
-                        '<strong>URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>' +
-                    '</div>' +
-                    '<div class="mt-2">' +
-                        '<button class="btn btn-info btn-sm me-2" onclick="reanudarDescarga(\\"' + download_id + '\\")" title="Continuar descarga">' +
-                            'Continuar' +
-                        '</button>' +
-                        '<button class="btn btn-success btn-sm me-2" onclick="reproducirUrlActiva(\\"' + download_id + '\\")" title="Reproducir video">' +
-                            'Reproducir' +
-                        '</button>' +
-                        '<button class="btn btn-outline-secondary btn-sm" onclick="eliminarDescargaActiva(\\"' + download_id + '\\")" title="Eliminar de la lista">' +
-                            'Quitar' +
-                        '</button>' +
-                    '</div>';
+                // Verificar si ya tiene los botones de pausa para evitar duplicados
+                if (!descargaElementPaused.querySelector('.btn-info[title="Continuar descarga"]')) {
+                    descargaElementPaused.innerHTML += 
+                        '<div class="mt-2 text-info">Descarga pausada - puedes continuarla</div>' +
+                        '<div class="mt-2 url-display small">' +
+                            '<strong>URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>' +
+                        '</div>' +
+                        '<div class="mt-2 paused-controls">' +
+                            '<button class="btn btn-info btn-sm me-2" onclick="reanudarDescarga(\\"' + download_id + '\\")" title="Continuar descarga">' +
+                                'Continuar' +
+                            '</button>' +
+                            '<button class="btn btn-success btn-sm me-2" onclick="reproducirUrlActiva(\\"' + download_id + '\\")" title="Reproducir video">' +
+                                'Reproducir' +
+                            '</button>' +
+                            '<button class="btn btn-outline-secondary btn-sm" onclick="eliminarDescargaActiva(\\"' + download_id + '\\")" title="Eliminar de la lista">' +
+                                'Quitar' +
+                            '</button>' +
+                        '</div>';
+                }
             }
         }
     }).catch(error => {
@@ -2308,19 +2409,46 @@ def extract_m3u8_metadata(m3u8_url):
         parsed_url = urlparse(m3u8_url)
         url_path = unquote(parsed_url.path)
         
-        # Buscar nombre en la URL
+        # Buscar nombre en la URL - incluir 'index' con información del directorio
         url_filename = url_path.split('/')[-1].replace('.m3u8', '')
-        if url_filename and url_filename != 'index' and url_filename != 'playlist':
-            metadata['suggested_name'] = sanitize_filename(url_filename)
+        if url_filename and url_filename != 'playlist':
+            if url_filename == 'index':
+                # Para archivos index, usar el nombre del directorio padre
+                path_parts = [p for p in url_path.split('/') if p and p != 'index.m3u8']
+                if path_parts:
+                    metadata['suggested_name'] = sanitize_filename(path_parts[-1])
+            else:
+                metadata['suggested_name'] = sanitize_filename(url_filename)
         
         # 2. Descargar y analizar el contenido M3U8
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'application/vnd.apple.mpegurl, application/x-mpegurl, application/octet-stream, */*',
+            'Referer': f"{parsed_url.scheme}://{parsed_url.netloc}/"
         }
         
-        response = requests.get(m3u8_url, headers=headers, timeout=10)
-        response.raise_for_status()
-        content = response.text
+        try:
+            response = requests.get(m3u8_url, headers=headers, timeout=15)
+            response.raise_for_status()
+            content = response.text
+            
+            # Verificar que el contenido parece ser un M3U8 válido
+            if not content.strip().startswith('#EXTM3U') and '#EXTINF:' not in content:
+                print(f"Advertencia: El contenido no parece ser un M3U8 válido para {m3u8_url}")
+                # Aún así continuar, puede ser un formato válido
+            
+        except requests.RequestException as e:
+            print(f"Error descargando M3U8 para metadatos: {e}")
+            # Fallback: usar solo la información de la URL
+            if not metadata['suggested_name']:
+                try:
+                    # Intentar extraer nombre del directorio padre
+                    path_parts = [p for p in parsed_url.path.split('/') if p and '.m3u8' not in p]
+                    if path_parts:
+                        metadata['suggested_name'] = sanitize_filename(path_parts[-1])
+                except:
+                    pass
+            return metadata
         
         # 3. Extraer información del contenido M3U8
         lines = content.strip().split('\n')
@@ -2423,6 +2551,36 @@ def suggest_filename_from_m3u8(m3u8_url):
     
     # Fallback: generar nombre único
     return f'video_{uuid.uuid4().hex[:8]}'
+
+def suggest_filename_from_url_only(m3u8_url):
+    """Función de fallback que solo usa la URL sin hacer peticiones HTTP"""
+    import re
+    from urllib.parse import urlparse, unquote
+    
+    try:
+        parsed_url = urlparse(m3u8_url)
+        url_path = unquote(parsed_url.path)
+        
+        # Extraer nombre del archivo o directorio
+        url_filename = url_path.split('/')[-1].replace('.m3u8', '')
+        
+        if url_filename and url_filename != 'playlist':
+            if url_filename == 'index':
+                # Para archivos index, usar el nombre del directorio padre
+                path_parts = [p for p in url_path.split('/') if p and p != 'index.m3u8']
+                if path_parts:
+                    return sanitize_filename(path_parts[-1])
+            else:
+                return sanitize_filename(url_filename)
+        
+        # Si no se puede extraer nombre, usar dominio + timestamp
+        domain = parsed_url.netloc.replace('www.', '').split('.')[0]
+        timestamp = str(int(time.time()))[-6:]  # Últimos 6 dígitos
+        return f"{domain}_{timestamp}"
+        
+    except Exception:
+        # Fallback final: nombre único
+        return f'video_{uuid.uuid4().hex[:8]}'
 
 def cleanup_old_downloads():
     """Limpia descargas antiguas del diccionario de progreso"""
@@ -3129,6 +3287,8 @@ def process_download_queue():
 @app.route('/api/metadata', methods=['POST'])
 def get_m3u8_metadata():
     """Obtiene metadatos de una URL M3U8 para sugerir nombre y mostrar información"""
+    import requests  # Importar aquí para manejar timeout específicamente
+    
     try:
         # Verificar que se reciban datos JSON válidos
         if not request.is_json:
@@ -3146,13 +3306,41 @@ def get_m3u8_metadata():
         if not is_valid_m3u8_url(m3u8_url):
             return jsonify({'success': False, 'error': f'URL M3U8 no válida: {m3u8_url}'}), 400
         
-        metadata = extract_m3u8_metadata(m3u8_url)
+        print(f"Procesando metadatos para: {m3u8_url}")
         
-        return jsonify({
-            'success': True,
-            'metadata': metadata,
-            'suggested_filename': metadata['suggested_name'] or suggest_filename_from_m3u8(m3u8_url)
-        })
+        try:
+            metadata = extract_m3u8_metadata(m3u8_url)
+            suggested_filename = metadata['suggested_name'] or suggest_filename_from_m3u8(m3u8_url)
+            
+            print(f"Metadatos extraídos exitosamente. Nombre sugerido: {suggested_filename}")
+            
+            return jsonify({
+                'success': True,
+                'metadata': metadata,
+                'suggested_filename': suggested_filename
+            })
+            
+        except requests.Timeout:
+            # Fallback para timeouts
+            print(f"Timeout al acceder a {m3u8_url}, usando fallback")
+            fallback_name = suggest_filename_from_url_only(m3u8_url)
+            return jsonify({
+                'success': True,
+                'metadata': {'suggested_name': fallback_name, 'video_info': {'source': 'fallback'}},
+                'suggested_filename': fallback_name,
+                'warning': 'No se pudieron obtener metadatos completos (timeout), usando nombre básico'
+            })
+            
+        except Exception as metadata_error:
+            print(f"Error extrayendo metadatos de {m3u8_url}: {metadata_error}")
+            # Fallback para otros errores
+            fallback_name = suggest_filename_from_url_only(m3u8_url)
+            return jsonify({
+                'success': True,
+                'metadata': {'suggested_name': fallback_name, 'video_info': {'source': 'fallback'}},
+                'suggested_filename': fallback_name,
+                'warning': f'No se pudieron obtener metadatos completos: {str(metadata_error)}'
+            })
         
     except Exception as e:
         print(f"Error en /api/metadata: {str(e)}")
