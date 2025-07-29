@@ -1,5 +1,6 @@
 import os
 import requests
+from requests.adapters import HTTPAdapter
 import subprocess
 from urllib.parse import urljoin
 from tqdm import tqdm
@@ -9,20 +10,36 @@ class M3U8Downloader:
     """
     Versión 4.1: Corregido el error de llamada al método cleanup.
     """
-    def __init__(self, m3u8_url: str, output_filename: str = 'output.mp4', max_workers: int = 20, temp_dir: str = 'temp_segments'):
+    def __init__(self, m3u8_url: str, output_filename: str = 'output.mp4', max_workers: int = 30, temp_dir: str = 'temp_segments'):
         self.m3u8_url = m3u8_url
         self.output_filename = output_filename
         self.temp_dir = temp_dir
+        # Aumentar workers para mayor paralelismo
         self.max_workers = max_workers
+        # Headers optimizados para mejor rendimiento
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
             'Accept': '*/*', 
-            'Connection': 'keep-alive'
+            'Connection': 'keep-alive',
+            'Accept-Encoding': 'gzip, deflate',  # Compresión para reducir transferencia
+            'Cache-Control': 'no-cache'
         }
+        # Session reutilizable para conexiones persistentes
+        self.session = requests.Session()
+        self.session.headers.update(self.headers)
+        # Configuración optimizada de la sesión
+        adapter = HTTPAdapter(
+            pool_connections=max_workers,  # Pool de conexiones
+            pool_maxsize=max_workers * 2,  # Tamaño máximo del pool
+            max_retries=3,  # Reintentos automáticos
+            pool_block=False  # No bloquear cuando el pool está lleno
+        )
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
 
     def _get_segment_urls(self) -> list:
         print("📄 Obteniendo lista de segmentos desde el M3U8...")
-        response = requests.get(self.m3u8_url, headers=self.headers)
+        response = self.session.get(self.m3u8_url, timeout=10)
         response.raise_for_status()
         
         playlist_content = response.text
@@ -33,7 +50,7 @@ class M3U8Downloader:
         if sub_playlists:
             best_quality_url = urljoin(self.m3u8_url, sub_playlists[-1])
             print(f"ℹ️ Manifiesto maestro detectado. Seleccionando la mejor calidad: {best_quality_url}")
-            response = requests.get(best_quality_url, headers=self.headers)
+            response = self.session.get(best_quality_url, timeout=10)
             response.raise_for_status()
             playlist_content = response.text
             lines = playlist_content.splitlines()
@@ -55,7 +72,7 @@ class M3U8Downloader:
         segment_filename = f'segment_{index:05d}.ts'
         segment_path = os.path.join(self.temp_dir, segment_filename)
         try:
-            response = requests.get(url, headers=self.headers, stream=True, timeout=15)
+            response = self.session.get(url, headers=self.headers, stream=True, timeout=15)
             response.raise_for_status()
             with open(segment_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
