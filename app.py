@@ -1150,6 +1150,31 @@ function reanudarDescarga(download_id) {
     }
 }
 
+// Función para pausar descarga
+function pausarDescarga(download_id) {
+    if (confirm('¿Pausar esta descarga? Podrás reanudarla más tarde.')) {
+        fetch('/pausar/' + download_id, {
+            method: 'POST'
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                showNotification('Descarga pausada', 'info');
+                // Actualizar la interfaz para mostrar estado pausado
+                const pauseBtn = document.getElementById('pause-btn-' + download_id);
+                const cancelBtn = document.getElementById('cancel-btn-' + download_id);
+                if (pauseBtn) pauseBtn.style.display = 'none';
+                if (cancelBtn) cancelBtn.style.display = 'none';
+                
+                // Actualizar el progreso para reflejar el estado pausado
+                setTimeout(() => actualizarProgreso(download_id), 500);
+            } else {
+                showNotification('Error al pausar: ' + data.error, 'danger');
+            }
+        }).catch(error => {
+            showNotification('Error al pausar: ' + error.message, 'danger');
+        });
+    }
+}
+
 // Función para renombrar archivo
 function renombrarArchivo(filename) {
     const nuevoNombre = prompt('Nuevo nombre para el archivo (sin extensión):', filename.replace('.mp4', ''));
@@ -1883,13 +1908,36 @@ function mostrarDescargaActiva(download_id, url) {
     progressBar.style.width = '0%';
     progressDiv.appendChild(progressBar);
     
-    // Botón cancelar
+    // Botones de control
     const buttonDiv = document.createElement('div');
+    buttonDiv.className = 'mt-2';
+    
+    // Botón reproducir
+    const playBtn = document.createElement('button');
+    playBtn.className = 'btn btn-success btn-sm me-2';
+    playBtn.id = 'play-btn-' + download_id;
+    playBtn.innerHTML = '▶️ Reproducir';
+    playBtn.title = 'Reproducir video mientras se descarga';
+    playBtn.onclick = function() { reproducirUrlActiva(download_id); };
+    
+    // Botón pausar descarga
+    const pauseBtn = document.createElement('button');
+    pauseBtn.className = 'btn btn-warning btn-sm me-2';
+    pauseBtn.id = 'pause-btn-' + download_id;
+    pauseBtn.innerHTML = '⏸️ Pausar';
+    pauseBtn.title = 'Pausar descarga';
+    pauseBtn.onclick = function() { pausarDescarga(download_id); };
+    
+    // Botón cancelar
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'btn btn-danger btn-sm';
     cancelBtn.id = 'cancel-btn-' + download_id;
-    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.textContent = '❌ Cancelar';
+    cancelBtn.title = 'Cancelar descarga';
     cancelBtn.onclick = function() { cancelarDescarga(download_id); };
+    
+    buttonDiv.appendChild(playBtn);
+    buttonDiv.appendChild(pauseBtn);
     buttonDiv.appendChild(cancelBtn);
     
     // Agregar todo al contenedor principal
@@ -1980,13 +2028,32 @@ function actualizarProgreso(download_id) {
             if (bar) bar.style.width = data.porcentaje + '%';
             if (prog) prog.innerText = data.porcentaje + '%';
             if (descargaDiv) descargaDiv.className = 'descarga-item';
+            
+            // Asegurar que los botones correctos están visibles para descargas en progreso
+            let playBtn = document.getElementById('play-btn-' + download_id);
+            let pauseBtn = document.getElementById('pause-btn-' + download_id);
+            let cancelBtn = document.getElementById('cancel-btn-' + download_id);
+            
+            if (playBtn) playBtn.style.display = 'inline-block';
+            if (pauseBtn) pauseBtn.style.display = 'inline-block';
+            if (cancelBtn) cancelBtn.style.display = 'inline-block';
+            
             setTimeout(function() { actualizarProgreso(download_id); }, 1000);
         } else if (data.status === 'done') {
             if (bar) bar.style.width = '100%';
             if (prog) prog.innerText = '100%';
             if (archivo) archivo.innerHTML = '<span class="status-indicator status-done"></span>Completado: ' + data.output_file;
-            if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-done';
+            
+            // Ocultar botones de descarga activa
+            let playBtn = document.getElementById('play-btn-' + download_id);
+            let pauseBtn = document.getElementById('pause-btn-' + download_id);
+            let cancelBtn = document.getElementById('cancel-btn-' + download_id);
+            
+            if (playBtn) playBtn.style.display = 'none';
+            if (pauseBtn) pauseBtn.style.display = 'none';
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            
             if (stats) {
                 let duracion = data.end_time && data.start_time ? 
                     Math.round(data.end_time - data.start_time) : 0;
@@ -2090,9 +2157,17 @@ function actualizarProgreso(download_id) {
             showNotification('Descarga cancelada', 'warning');
         } else if (data.status === 'paused') {
             if (archivo) archivo.innerHTML = '<span class="status-indicator status-cancelled"></span>Descarga pausada';
-            if (cancelBtn) cancelBtn.style.display = 'none';
             if (descargaDiv) descargaDiv.className += ' descarga-cancelled';
             if (stats) stats.innerText = 'Pausada - se puede reanudar';
+            
+            // Ocultar botones de descarga activa
+            let playBtn = document.getElementById('play-btn-' + download_id);
+            let pauseBtn = document.getElementById('pause-btn-' + download_id);
+            let cancelBtn = document.getElementById('cancel-btn-' + download_id);
+            
+            if (playBtn) playBtn.style.display = 'none';
+            if (pauseBtn) pauseBtn.style.display = 'none';
+            if (cancelBtn) cancelBtn.style.display = 'none';
             
             let descargaElementPaused = document.getElementById('descarga-' + download_id);
             if (descargaElementPaused) {
@@ -2337,25 +2412,30 @@ function reproducirUrlFromData(button) {
 }
 
 function reproducirUrlActiva(download_id) {
+    const playButton = document.getElementById('play-btn-' + download_id);
+    
     fetch('/progreso/' + download_id).then(r => r.json()).then(data => {
         if (data.url) {
             document.getElementById('m3u8-url').value = data.url;
             
             playM3U8();
             
-            let button = event.target;
-            let originalText = button.innerHTML;
-            button.innerHTML = '🎬 Reproduciendo';
-            button.disabled = true;
-            setTimeout(function() {
-                button.innerHTML = originalText;
-                button.disabled = false;
-            }, 3000);
+            if (playButton) {
+                let originalText = playButton.innerHTML;
+                playButton.innerHTML = '🎬 Reproduciendo...';
+                playButton.disabled = true;
+                setTimeout(function() {
+                    playButton.innerHTML = originalText;
+                    playButton.disabled = false;
+                }, 3000);
+            }
+            
+            showNotification('Reproduciendo video en el reproductor', 'info');
         } else {
-            alert('No se pudo obtener la URL para reproducir.');
+            showNotification('No se pudo obtener la URL para reproducir', 'warning');
         }
     }).catch(error => {
-        alert('Error al obtener la URL: ' + error.message);
+        showNotification('Error al obtener la URL: ' + error.message, 'danger');
     });
 }
 
@@ -3030,6 +3110,38 @@ def reanudar_descarga(download_id):
             result = descargar()
             
         return jsonify({'success': True, 'message': 'Descarga reanudada'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/pausar/<download_id>', methods=['POST'])
+def pausar_descarga(download_id):
+    """Pausa una descarga en progreso"""
+    if download_id not in multi_progress:
+        return jsonify({'success': False, 'error': 'ID de descarga no encontrado.'}), 404
+    
+    download_info = multi_progress[download_id]
+    
+    if download_info['status'] != 'downloading':
+        return jsonify({'success': False, 'error': 'Solo se pueden pausar descargas en progreso.'}), 400
+    
+    try:
+        # Marcar la descarga como pausada
+        download_info['status'] = 'paused'
+        download_info['can_resume'] = True
+        download_info['pause_time'] = time.time()
+        
+        # Añadir a cancelled_downloads para detener el proceso
+        cancelled_downloads.add(download_id)
+        
+        # Guardar estado
+        save_download_state()
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Descarga pausada correctamente',
+            'status': 'paused'
+        })
+        
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
