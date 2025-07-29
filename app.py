@@ -1281,6 +1281,96 @@ function eliminarArchivoFromData(button) {
     }
 }
 
+// Función para renombrar descarga activa mientras se está descargando
+function renombrarDescargaActiva(download_id) {
+    console.log('🔄 Iniciando renombrado de descarga activa:', download_id);
+    
+    // Obtener el nombre actual del archivo
+    const archivoElement = document.getElementById('archivo-' + download_id);
+    if (!archivoElement) {
+        console.error('❌ No se encontró el elemento del archivo para:', download_id);
+        showNotification('❌ Error: No se pudo obtener la información de la descarga', 'danger');
+        return;
+    }
+    
+    const nombreActual = archivoElement.textContent || 'Archivo sin nombre';
+    const nombreSinExtension = nombreActual.replace('.mp4', '').replace('Descargando: ', '').replace('Preparando descarga...', 'nuevo_archivo');
+    
+    const nuevoNombre = prompt('Nuevo nombre para el archivo (sin extensión):', nombreSinExtension);
+    
+    if (nuevoNombre === null) {
+        console.log('❌ Renombrado cancelado por el usuario');
+        return;
+    }
+    
+    const nuevoNombreLimpio = nuevoNombre.trim();
+    
+    if (!nuevoNombreLimpio) {
+        showNotification('❌ El nuevo nombre no puede estar vacío', 'danger');
+        return;
+    }
+    
+    if (nuevoNombreLimpio === nombreSinExtension) {
+        console.log('ℹ️ El nuevo nombre es igual al actual, no se hace nada');
+        return;
+    }
+    
+    console.log('📤 Enviando solicitud de renombrado para descarga activa:', {
+        download_id: download_id,
+        nuevo_nombre: nuevoNombreLimpio
+    });
+    
+    // Mostrar indicador de carga
+    showNotification('🔄 Renombrando descarga activa...', 'info');
+    
+    fetch('/renombrar_descarga_activa/' + encodeURIComponent(download_id), {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({ nuevo_nombre: nuevoNombreLimpio })
+    })
+    .then(response => {
+        console.log('📥 Respuesta recibida:', response.status, response.statusText);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        return response.json();
+    })
+    .then(data => {
+        console.log('📄 Datos de respuesta:', data);
+        
+        if (data.success) {
+            showNotification(`✅ Descarga renombrada a: ${data.nuevo_nombre}`, 'success');
+            console.log('✅ Renombrado exitoso:', data.message);
+            
+            // Actualizar el nombre mostrado en la interfaz
+            const archivoElement = document.getElementById('archivo-' + download_id);
+            if (archivoElement) {
+                const textoActual = archivoElement.textContent;
+                if (textoActual.includes('Descargando: ')) {
+                    archivoElement.textContent = 'Descargando: ' + data.nuevo_nombre + '.mp4';
+                } else if (textoActual.includes('Preparando descarga...')) {
+                    archivoElement.textContent = 'Preparando: ' + data.nuevo_nombre + '.mp4';
+                } else {
+                    archivoElement.textContent = data.nuevo_nombre + '.mp4';
+                }
+            }
+        } else {
+            const errorMsg = data.error || 'Error desconocido';
+            console.error('❌ Error del servidor:', errorMsg);
+            showNotification(`❌ Error al renombrar: ${errorMsg}`, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('❌ Error de red o JavaScript:', error);
+        showNotification(`❌ Error de conexión: ${error.message}`, 'danger');
+    });
+}
+
 // Mejorar la función de cola
 function addToQueue() {
     const url = document.getElementById('queue-url-input').value.trim();
@@ -2012,15 +2102,24 @@ function mostrarDescargaActiva(download_id, url) {
     
     // Botón cancelar
     const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'btn btn-danger btn-sm';
+    cancelBtn.className = 'btn btn-danger btn-sm me-2';
     cancelBtn.id = 'cancel-btn-' + download_id;
     cancelBtn.textContent = '❌ Cancelar';
     cancelBtn.title = 'Cancelar descarga';
     cancelBtn.onclick = function() { cancelarDescarga(download_id); };
     
+    // Botón renombrar
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'btn btn-outline-warning btn-sm';
+    renameBtn.id = 'rename-btn-' + download_id;
+    renameBtn.innerHTML = '✏️ Renombrar';
+    renameBtn.title = 'Renombrar archivo mientras se descarga';
+    renameBtn.onclick = function() { renombrarDescargaActiva(download_id); };
+    
     buttonDiv.appendChild(playBtn);
     buttonDiv.appendChild(pauseBtn);
     buttonDiv.appendChild(cancelBtn);
+    buttonDiv.appendChild(renameBtn);
     
     // Agregar todo al contenedor principal
     barra.appendChild(titleDiv);
@@ -3409,6 +3508,87 @@ def renombrar_archivo(filename):
         
     except Exception as e:
         error_msg = f'Error al renombrar: {str(e)}'
+        print(f"❌ {error_msg}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': error_msg}), 500
+
+@app.route('/renombrar_descarga_activa/<download_id>', methods=['POST'])
+def renombrar_descarga_activa(download_id):
+    """Renombra una descarga activa mientras se está descargando"""
+    try:
+        data = request.get_json()
+        nuevo_nombre = data.get('nuevo_nombre', '').strip()
+        
+        if not nuevo_nombre:
+            return jsonify({'success': False, 'error': 'Nuevo nombre no proporcionado.'}), 400
+        
+        print(f"🔄 Renombrando descarga activa '{download_id}' a '{nuevo_nombre}'")
+        
+        # Verificar que la descarga existe
+        if download_id not in multi_progress:
+            return jsonify({'success': False, 'error': 'ID de descarga no encontrado.'}), 404
+        
+        download_info = multi_progress[download_id]
+        
+        # Sanitizar el nuevo nombre
+        nuevo_nombre_limpio = sanitize_filename(nuevo_nombre)
+        print(f"📝 Nombre sanitizado: '{nuevo_nombre_limpio}'")
+        
+        if not nuevo_nombre_limpio.lower().endswith('.mp4'):
+            nuevo_nombre_limpio += '.mp4'
+        
+        # Validar que el nuevo nombre es válido
+        if len(nuevo_nombre_limpio) > 255:
+            return jsonify({'success': False, 'error': 'El nombre del archivo es demasiado largo (máximo 255 caracteres).'}), 400
+        
+        # Verificar que el nuevo nombre no existe en static
+        static_dir = os.path.join(os.path.dirname(__file__), 'static')
+        archivo_nuevo = os.path.join(static_dir, nuevo_nombre_limpio)
+        
+        if os.path.exists(archivo_nuevo):
+            return jsonify({'success': False, 'error': f'Ya existe un archivo con el nombre "{nuevo_nombre_limpio}".'}), 400
+        
+        # Actualizar la información de la descarga
+        download_info['output_file'] = nuevo_nombre_limpio
+        download_info['original_filename'] = nuevo_nombre_limpio
+        
+        # Si hay un downloader activo, también actualizar su output_file
+        if 'downloader' in download_info and download_info['downloader']:
+            try:
+                # El M3U8Downloader tiene un atributo output_file que podemos actualizar
+                downloader = download_info['downloader']
+                if hasattr(downloader, 'output_file'):
+                    old_output_path = downloader.output_file
+                    new_output_path = os.path.join(static_dir, nuevo_nombre_limpio)
+                    downloader.output_file = new_output_path
+                    print(f"✅ Actualizado output_file del downloader: {new_output_path}")
+                    
+                    # Si ya existe un archivo temporal parcial, renombrarlo
+                    if os.path.exists(old_output_path) and old_output_path != new_output_path:
+                        try:
+                            os.rename(old_output_path, new_output_path)
+                            print(f"✅ Archivo temporal renombrado de {old_output_path} a {new_output_path}")
+                        except OSError as rename_error:
+                            print(f"⚠️ No se pudo renombrar archivo temporal: {rename_error}")
+                            
+            except Exception as downloader_error:
+                print(f"⚠️ Error al actualizar downloader: {downloader_error}")
+        
+        # Guardar el estado actualizado
+        save_download_state()
+        
+        print(f"✅ Descarga activa renombrada exitosamente a: {nuevo_nombre_limpio}")
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Descarga renombrada de "{download_info.get("original_filename", "archivo")}" a "{nuevo_nombre_limpio}"',
+            'nuevo_nombre': nuevo_nombre_limpio.replace('.mp4', ''),
+            'download_id': download_id
+        })
+        
+    except Exception as e:
+        error_msg = f'Error al renombrar descarga activa: {str(e)}'
         print(f"❌ {error_msg}")
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
