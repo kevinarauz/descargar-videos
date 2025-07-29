@@ -1,0 +1,2 @@
+#Ejecutar aplicativo
+py app.py
