@@ -2085,6 +2085,12 @@ function mostrarDescargaActiva(download_id, url) {
     speedDiv.id = 'speed-' + download_id;
     speedDiv.innerHTML = '<strong>Velocidad:</strong> <span>Calculando...</span>';
     
+    // Time div - mostrar tiempos de descarga
+    const timeDiv = document.createElement('div');
+    timeDiv.className = 'download-time small text-warning';
+    timeDiv.id = 'time-' + download_id;
+    timeDiv.innerHTML = '<strong>Tiempo:</strong> <span>00:00 transcurrido</span>';
+    
     // URL div
     const urlDiv = document.createElement('div');
     urlDiv.className = 'mt-2 url-display small';
@@ -2150,6 +2156,7 @@ function mostrarDescargaActiva(download_id, url) {
     barra.appendChild(titleDiv);
     barra.appendChild(statsDiv);
     barra.appendChild(speedDiv);
+    barra.appendChild(timeDiv);
     barra.appendChild(urlDiv);
     barra.appendChild(progressTextDiv);
     barra.appendChild(progressDiv);
@@ -2219,6 +2226,7 @@ function actualizarProgreso(download_id) {
         let descargaDiv = document.getElementById('descarga-' + download_id);
         let stats = document.getElementById('stats-' + download_id);
         let speedElement = document.getElementById('speed-' + download_id);
+        let timeElement = document.getElementById('time-' + download_id);
         
         if (data.output_file && archivo) {
             archivo.innerHTML = '<span class="status-indicator status-' + data.status + '"></span>Descargando: ' + data.output_file;
@@ -2239,7 +2247,16 @@ function actualizarProgreso(download_id) {
                     velocidadTexto = velocidad + ' seg/min';
                 }
                 
-                stats.innerText = segmentos + ' • ' + velocidadTexto;
+                // Agregar información de tiempo
+                let tiempoTexto = '';
+                if (data.elapsed_time_formatted) {
+                    tiempoTexto = ' • Transcurrido: ' + data.elapsed_time_formatted;
+                }
+                if (data.estimated_time_formatted && data.estimated_time > 0) {
+                    tiempoTexto += ' • Resta: ' + data.estimated_time_formatted;
+                }
+                
+                stats.innerText = segmentos + ' • ' + velocidadTexto + tiempoTexto;
             } else {
                 stats.innerText = segmentos;
             }
@@ -2256,6 +2273,31 @@ function actualizarProgreso(download_id) {
             }
         } else if (speedElement) {
             speedElement.innerHTML = '<strong>Velocidad:</strong> <span class="text-muted">-</span>';
+        }
+        
+        // Actualizar elemento de tiempo separado
+        if (timeElement && data.status === 'downloading') {
+            let tiempoHtml = '<strong>Tiempo:</strong> ';
+            
+            if (data.elapsed_time_formatted) {
+                tiempoHtml += `<span class="text-warning">${data.elapsed_time_formatted} transcurrido</span>`;
+                
+                if (data.estimated_time_formatted && data.estimated_time > 0) {
+                    tiempoHtml += ` • <span class="text-info">${data.estimated_time_formatted} restante</span>`;
+                }
+            } else {
+                tiempoHtml += '<span class="text-muted">Calculando...</span>';
+            }
+            
+            timeElement.innerHTML = tiempoHtml;
+        } else if (timeElement && data.status === 'done') {
+            if (data.total_time_formatted) {
+                timeElement.innerHTML = `<strong>Tiempo total:</strong> <span class="text-success">${data.total_time_formatted}</span>`;
+            } else {
+                timeElement.innerHTML = '<strong>Tiempo:</strong> <span class="text-success">Completado</span>';
+            }
+        } else if (timeElement) {
+            timeElement.innerHTML = '<strong>Tiempo:</strong> <span class="text-muted">-</span>';
         }
         
         if (data.status === 'downloading') {
@@ -2292,9 +2334,22 @@ function actualizarProgreso(download_id) {
             if (cancelBtn) cancelBtn.style.display = 'none';
             
             if (stats) {
-                let duracion = data.end_time && data.start_time ? 
-                    Math.round(data.end_time - data.start_time) : 0;
-                stats.innerText = 'Completado en ' + duracion + 's';
+                let tiempoTotal = '';
+                if (data.total_time_formatted) {
+                    tiempoTotal = 'Completado en ' + data.total_time_formatted;
+                } else if (data.end_time && data.start_time) {
+                    let duracion = Math.round(data.end_time - data.start_time);
+                    tiempoTotal = 'Completado en ' + duracion + 's';
+                } else {
+                    tiempoTotal = 'Completado';
+                }
+                
+                // Agregar velocidad promedio si está disponible
+                if (data.download_speed && data.download_speed > 0) {
+                    tiempoTotal += ' • Velocidad promedio: ' + data.download_speed.toFixed(2) + ' MB/s';
+                }
+                
+                stats.innerText = tiempoTotal;
             }
             let descargaElement = document.getElementById('descarga-' + download_id);
             if (descargaElement) {
@@ -2813,6 +2868,20 @@ def format_modification_time(timestamp):
     dt = datetime.datetime.fromtimestamp(timestamp)
     return dt.strftime('%d/%m/%Y %H:%M')
 
+def format_duration(seconds):
+    """Convierte segundos a formato HH:MM:SS"""
+    if seconds < 0:
+        return "00:00:00"
+    
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    else:
+        return f"{minutes:02d}:{secs:02d}"
+
 def get_download_stats():
     """Obtiene estadísticas de descargas activas"""
     downloading = sum(1 for d in multi_progress.values() if d['status'] == 'downloading')
@@ -3209,7 +3278,10 @@ def descargar():
             'bytes_downloaded': 0,
             'download_speed': 0.0,  # Inicializado como float
             'last_update_time': time.time(),
-            'last_bytes': 0
+            'last_bytes': 0,
+            'elapsed_time': 0,  # Tiempo transcurrido en segundos
+            'estimated_time': 0,  # Tiempo estimado restante en segundos
+            'total_time': 0  # Tiempo total cuando termine
         }
     
     def run_download():
@@ -3277,6 +3349,10 @@ def descargar():
                     current_time = time.time()
                     time_diff = current_time - multi_progress[download_id]['last_update_time']
                     
+                    # Calcular tiempo transcurrido
+                    elapsed_time = current_time - multi_progress[download_id]['start_time']
+                    multi_progress[download_id]['elapsed_time'] = elapsed_time
+                    
                     if time_diff > 0 and isinstance(bytes_downloaded, (int, float)) and bytes_downloaded > 0:
                         # Actualizar bytes totales descargados
                         multi_progress[download_id]['bytes_downloaded'] += bytes_downloaded
@@ -3294,6 +3370,17 @@ def descargar():
                             else:
                                 # Promedio móvil con factor 0.3 para suavizar
                                 multi_progress[download_id]['download_speed'] = (current_speed * 0.7) + (speed_mbps * 0.3)
+                            
+                            # Calcular tiempo estimado restante
+                            segments_remaining = len(segment_urls) - (i + 1)
+                            if segments_remaining > 0 and multi_progress[download_id]['download_speed'] > 0:
+                                # Estimar bytes promedio por segmento
+                                avg_bytes_per_segment = multi_progress[download_id]['bytes_downloaded'] / (i + 1 - start_index) if (i + 1 - start_index) > 0 else bytes_downloaded
+                                estimated_bytes_remaining = segments_remaining * avg_bytes_per_segment
+                                estimated_seconds = estimated_bytes_remaining / (multi_progress[download_id]['download_speed'] * 1024 * 1024)
+                                multi_progress[download_id]['estimated_time'] = estimated_seconds
+                            else:
+                                multi_progress[download_id]['estimated_time'] = 0
                         
                         multi_progress[download_id]['last_update_time'] = current_time
                     
@@ -3336,6 +3423,7 @@ def descargar():
                     os.replace(output_path, static_path)
                     multi_progress[download_id]['status'] = 'done'
                     multi_progress[download_id]['end_time'] = time.time()
+                    multi_progress[download_id]['total_time'] = multi_progress[download_id]['end_time'] - multi_progress[download_id]['start_time']
                     multi_progress[download_id]['can_resume'] = False
                     
                     # Guardar metadatos del video (URL y fecha de descarga)
@@ -3376,7 +3464,15 @@ def descargar():
 def progreso(download_id):
     if download_id not in multi_progress:
         return jsonify({'status': 'error', 'error': 'ID de descarga no encontrado.'}), 404
-    return jsonify(multi_progress[download_id]), 200
+    
+    progress_data = multi_progress[download_id].copy()
+    
+    # Añadir tiempos formateados
+    progress_data['elapsed_time_formatted'] = format_duration(progress_data.get('elapsed_time', 0))
+    progress_data['estimated_time_formatted'] = format_duration(progress_data.get('estimated_time', 0))
+    progress_data['total_time_formatted'] = format_duration(progress_data.get('total_time', 0))
+    
+    return jsonify(progress_data), 200
 
 @app.route('/cancelar/<download_id>', methods=['POST'])
 def cancelar_descarga(download_id):
