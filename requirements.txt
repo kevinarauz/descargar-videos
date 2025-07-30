@@ -1,0 +1,59 @@
+# Descargador de Videos M3U8 - Dependencias
+# ==========================================
+
+# Framework web principal
+Flask==3.0.3
+
+# Peticiones HTTP optimizadas
+requests==2.32.3
+
+# Barra de progreso para descargas
+tqdm==4.66.4
+
+# Procesamiento de video (para fusión de segmentos)
+# Nota: FFmpeg debe estar instalado en el sistema
+# Descargar desde: https://ffmpeg.org/download.html
+
+# ==========================================
+# Dependencias incluidas en Python estándar:
+# ==========================================
+# - threading (manejo de hilos)
+# - uuid (generación de IDs únicos)
+# - re (expresiones regulares)
+# - os (operaciones del sistema)
+# - glob (búsqueda de archivos)
+# - time (manejo de tiempo)
+# - json (procesamiento JSON)
+# - datetime (fechas y horas)
+# - shutil (operaciones de archivos)
+# - subprocess (ejecución de procesos)
+# - urllib.parse (parsing de URLs)
+# - concurrent.futures (programación concurrente)
+
+# ==========================================
+# Instalación:
+# ==========================================
+# pip install -r requirements.txt
+#
+# Luego instalar FFmpeg desde:
+# https://ffmpeg.org/download.html
+# 
+# O en Windows con chocolatey:
+# choco install ffmpeg
+#
+# O en macOS con homebrew:
+# brew install ffmpeg
+#
+# O en Ubuntu/Debian:
+# sudo apt install ffmpeg
+
+# ==========================================
+# Optimizaciones incluidas:
+# ==========================================
+# - 1000 workers simultáneos para máxima velocidad
+# - Chunks de 8MB para transferencia extrema
+# - HTTPAdapter optimizado con pools grandes
+# - Headers optimizados con compresión Brotli
+# - Tracking en tiempo real de velocidad y tiempo
+# - Sistema de reanudación de descargas
+# - Interfaz web moderna y responsiva

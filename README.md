@@ -1,13 +1,35 @@
-# 🎥 Descargador M3U8 Mejorado
+# 🚀 Descargador de Videos M3U8 Súper Rápido
 
-Una aplicación web moderna para reproducir y descargar videos desde URLs M3U8, desarrollada con Flask, Python y Bootstrap.
+Un descargador de videos M3U8 optimizado para conexiones de alta velocidad con interfaz web moderna y tracking en tiempo real.
 
-## ✨ Características principales
+## ✨ Características
 
-### 🎬 Reproducción y descarga
-- **Reproducción en línea**: Visualiza videos M3U8 directamente en el navegador
-- **Descarga a MP4**: Convierte y descarga videos M3U8 como archivos MP4
-- **Nombres personalizados**: Asigna nombres específicos a tus descargas
+### 🏎️ **Velocidad Extrema**
+- **1000 workers simultáneos** para máximo paralelismo
+- **Chunks de 8MB** para transferencia súper rápida
+- **HTTPAdapter optimizado** con pools grandes
+- **Headers Brotli** para máxima compresión
+- **Velocidades de 20-50+ MB/s** en conexiones rápidas
+
+### 📊 **Monitoreo en Tiempo Real**
+- **Velocidad de descarga** en MB/s y KB/s
+- **Tiempo transcurrido** en formato HH:MM:SS
+- **Tiempo estimado restante** con cálculo inteligente
+- **Progreso por segmentos** con contador visual
+- **Dashboard de estadísticas** completo
+
+### 🔧 **Funciones Avanzadas**
+- **Reanudación de descargas** interrumpidas
+- **Descargas simultáneas** múltiples
+- **Historial completo** de descargas
+- **Gestión inteligente** de archivos duplicados
+- **Limpieza automática** de archivos temporales
+
+### 🎨 **Interfaz Moderna**
+- **Diseño responsivo** para móvil y desktop
+- **Tema oscuro** elegante
+- **Notificaciones** en tiempo real
+- **Controles intuitivos** de pausa/cancelación
 - **Reproductor fijo**: Dimensiones consistentes (600x400px) para mejor experiencia visual
 
 ### 📊 Gestión avanzada
