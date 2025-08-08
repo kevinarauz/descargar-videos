@@ -1,2 +1,5 @@
+#instalar librería
+pip install -r requirements.txt
+
 #Ejecutar aplicativo
 py app.py
