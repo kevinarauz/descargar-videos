@@ -68,17 +68,21 @@ class M3U8Downloader:
         print(f"✅ Encontrados {len(segment_urls)} segmentos.")
         return segment_urls
 
-    def _download_segment(self, url: str, index: int) -> str | None:
+    def _download_segment(self, url: str, index: int) -> tuple[str, int] | None:
         segment_filename = f'segment_{index:05d}.ts'
         segment_path = os.path.join(self.temp_dir, segment_filename)
         try:
             response = self.session.get(url, headers=self.headers, stream=True, timeout=15)
             response.raise_for_status()
+            bytes_downloaded = 0
             with open(segment_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
-            if os.path.getsize(segment_path) > 0:
-                return segment_filename
+                    bytes_downloaded += len(chunk)
+            
+            file_size = os.path.getsize(segment_path)
+            if file_size > 0:
+                return (segment_filename, bytes_downloaded)
             else:
                 os.remove(segment_path)
                 return None
@@ -97,7 +101,8 @@ class M3U8Downloader:
             for future in tqdm(as_completed(futures), total=len(segment_urls), desc="📥 Descargando segmentos (paralelo)"):
                 result = future.result()
                 if result:
-                    successful_segments.append(result)
+                    segment_filename, bytes_downloaded = result
+                    successful_segments.append(segment_filename)
 
         successful_segments.sort()
         return successful_segments

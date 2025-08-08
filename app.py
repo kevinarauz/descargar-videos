@@ -3336,7 +3336,7 @@ def descargar():
                     result = downloader._download_segment(url, i)
                     
                     # Verificar que el resultado es válido
-                    if not result or result[0] is None:
+                    if not result:
                         raise Exception("No se pudo descargar el segmento")
                     
                     segment_name, bytes_downloaded = result
