@@ -266,6 +266,89 @@ default_html = '''
         .descarga-error { border-left-color: var(--error-color) !important; }
         .descarga-done { border-left-color: var(--success-color) !important; }
 
+        /* Estilos responsivos para descargas activas */
+        .descarga-item .text-truncate {
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .descarga-item .btn-group-responsive {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+            justify-content: flex-end;
+            align-items: center;
+        }
+
+        .descarga-item .btn-sm {
+            min-width: 35px;
+            height: 32px;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Mejorar URL display */
+        .url-display {
+            word-break: break-all;
+            font-size: 0.75rem !important;
+            line-height: 1.2;
+            max-height: 60px;
+            overflow-y: auto;
+        }
+
+        /* Información de descarga compacta */
+        .download-stats {
+            font-size: 0.8rem;
+            opacity: 0.9;
+        }
+
+        .download-speed, .download-time {
+            white-space: nowrap;
+        }
+
+        /* Responsive breakpoints para descargas activas */
+        @media (max-width: 768px) {
+            .descarga-item {
+                padding: 1rem;
+            }
+            
+            .descarga-item .text-truncate {
+                max-width: 200px;
+            }
+            
+            .descarga-item .btn-sm {
+                min-width: 32px;
+                height: 28px;
+                padding: 0.2rem 0.4rem;
+                font-size: 0.8rem;
+            }
+            
+            .descarga-item .d-flex.justify-content-between {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .descarga-item .btn-group-responsive {
+                margin-top: 0.5rem;
+                justify-content: flex-start;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .descarga-item .text-truncate {
+                max-width: 150px;
+            }
+            
+            .descarga-item .small.text-muted {
+                font-size: 0.7rem;
+            }
+        }
+
         /* Video container mejorado */
         #video-container {
             background: rgba(0, 0, 0, 0.3);
@@ -1335,13 +1418,16 @@ function renombrarDescargaActiva(download_id) {
             const archivoElement = document.getElementById('archivo-' + download_id);
             if (archivoElement) {
                 const textoActual = archivoElement.textContent;
+                let nuevoTexto = '';
                 if (textoActual.includes('Descargando: ')) {
-                    archivoElement.textContent = 'Descargando: ' + data.nuevo_nombre + '.mp4';
+                    nuevoTexto = 'Descargando: ' + data.nuevo_nombre + '.mp4';
                 } else if (textoActual.includes('Preparando descarga...')) {
-                    archivoElement.textContent = 'Preparando: ' + data.nuevo_nombre + '.mp4';
+                    nuevoTexto = 'Preparando: ' + data.nuevo_nombre + '.mp4';
                 } else {
-                    archivoElement.textContent = data.nuevo_nombre + '.mp4';
+                    nuevoTexto = data.nuevo_nombre + '.mp4';
                 }
+                archivoElement.textContent = nuevoTexto;
+                archivoElement.title = nuevoTexto; // Tooltip para ver el nombre completo
             }
         } else {
             const errorMsg = data.error || 'Error desconocido';
@@ -2062,80 +2148,67 @@ function mostrarDescargaActiva(download_id, url) {
     barra.className = 'descarga-item';
     barra.setAttribute('data-download-id', download_id);
     
-    // Crear estructura usando createElement para evitar problemas de escape
-    // Contenedor principal del título
+    // Crear estructura responsiva usando flexbox
+    // Contenedor principal con flexbox
+    const mainContainer = document.createElement('div');
+    mainContainer.className = 'd-flex flex-column';
+    
+    // Fila superior: título y botones (siempre visibles)
+    const topRow = document.createElement('div');
+    topRow.className = 'd-flex justify-content-between align-items-start flex-wrap mb-2';
+    
+    // Contenedor del título (lado izquierdo)
+    const titleContainer = document.createElement('div');
+    titleContainer.className = 'flex-grow-1 me-3';
+    
     const titleDiv = document.createElement('div');
+    titleDiv.className = 'd-flex align-items-center mb-1';
     const statusSpan = document.createElement('span');
-    statusSpan.className = 'status-indicator status-downloading';
+    statusSpan.className = 'status-indicator status-downloading me-2';
     const titleStrong = document.createElement('strong');
     titleStrong.id = 'archivo-' + download_id;
+    titleStrong.className = 'text-truncate';
+    titleStrong.style.maxWidth = '300px';
     titleStrong.textContent = 'Preparando descarga...';
+    titleStrong.title = 'Preparando descarga...'; // Tooltip para ver el nombre completo
     titleDiv.appendChild(statusSpan);
     titleDiv.appendChild(titleStrong);
     
-    // Stats div
+    // Stats en línea compacta
     const statsDiv = document.createElement('div');
-    statsDiv.className = 'download-stats';
+    statsDiv.className = 'download-stats small';
     statsDiv.id = 'stats-' + download_id;
     statsDiv.textContent = 'Inicializando...';
     
-    // Speed div - mostrar velocidad de descarga
-    const speedDiv = document.createElement('div');
-    speedDiv.className = 'download-speed small text-info';
-    speedDiv.id = 'speed-' + download_id;
-    speedDiv.innerHTML = '<strong>Velocidad:</strong> <span>Calculando...</span>';
+    titleContainer.appendChild(titleDiv);
+    titleContainer.appendChild(statsDiv);
     
-    // Time div - mostrar tiempos de descarga
-    const timeDiv = document.createElement('div');
-    timeDiv.className = 'download-time small text-warning';
-    timeDiv.id = 'time-' + download_id;
-    timeDiv.innerHTML = '<strong>Tiempo:</strong> <span>00:00 transcurrido</span>';
-    
-    // URL div
-    const urlDiv = document.createElement('div');
-    urlDiv.className = 'mt-2 url-display small';
-    urlDiv.id = 'url-' + download_id;
-    urlDiv.innerHTML = '<strong>URL:</strong> <span class="text-break">' + (url || 'N/A') + '</span>';
-    
-    // Progreso text
-    const progressTextDiv = document.createElement('div');
-    progressTextDiv.innerHTML = 'Progreso: <span id="progreso-' + download_id + '">0%</span>';
-    
-    // Progress bar
-    const progressDiv = document.createElement('div');
-    progressDiv.className = 'progress mb-2';
-    const progressBar = document.createElement('div');
-    progressBar.className = 'progress-bar';
-    progressBar.id = 'bar-' + download_id;
-    progressBar.setAttribute('role', 'progressbar');
-    progressBar.style.width = '0%';
-    progressDiv.appendChild(progressBar);
-    
-    // Botones de control
-    const buttonDiv = document.createElement('div');
-    buttonDiv.className = 'mt-2';
+    // Contenedor de botones (lado derecho) - siempre visible
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'd-flex flex-wrap gap-1 align-items-start';
+    buttonContainer.style.minWidth = '220px'; // Ancho mínimo para botones
     
     // Botón reproducir
     const playBtn = document.createElement('button');
-    playBtn.className = 'btn btn-success btn-sm me-2';
+    playBtn.className = 'btn btn-success btn-sm';
     playBtn.id = 'play-btn-' + download_id;
-    playBtn.innerHTML = '▶️ Reproducir';
+    playBtn.innerHTML = '▶️';
     playBtn.title = 'Reproducir video mientras se descarga';
     playBtn.onclick = function() { reproducirUrlActiva(download_id); };
     
     // Botón pausar descarga
     const pauseBtn = document.createElement('button');
-    pauseBtn.className = 'btn btn-warning btn-sm me-2';
+    pauseBtn.className = 'btn btn-warning btn-sm';
     pauseBtn.id = 'pause-btn-' + download_id;
-    pauseBtn.innerHTML = '⏸️ Pausar';
+    pauseBtn.innerHTML = '⏸️';
     pauseBtn.title = 'Pausar descarga';
     pauseBtn.onclick = function() { pausarDescarga(download_id); };
     
     // Botón cancelar
     const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'btn btn-danger btn-sm me-2';
+    cancelBtn.className = 'btn btn-danger btn-sm';
     cancelBtn.id = 'cancel-btn-' + download_id;
-    cancelBtn.textContent = '❌ Cancelar';
+    cancelBtn.textContent = '❌';
     cancelBtn.title = 'Cancelar descarga';
     cancelBtn.onclick = function() { cancelarDescarga(download_id); };
     
@@ -2143,32 +2216,99 @@ function mostrarDescargaActiva(download_id, url) {
     const renameBtn = document.createElement('button');
     renameBtn.className = 'btn btn-outline-warning btn-sm';
     renameBtn.id = 'rename-btn-' + download_id;
-    renameBtn.innerHTML = '✏️ Renombrar';
+    renameBtn.innerHTML = '✏️';
     renameBtn.title = 'Renombrar archivo mientras se descarga';
     renameBtn.onclick = function() { renombrarDescargaActiva(download_id); };
     
-    buttonDiv.appendChild(playBtn);
-    buttonDiv.appendChild(pauseBtn);
-    buttonDiv.appendChild(cancelBtn);
-    buttonDiv.appendChild(renameBtn);
+    buttonContainer.appendChild(playBtn);
+    buttonContainer.appendChild(pauseBtn);
+    buttonContainer.appendChild(cancelBtn);
+    buttonContainer.appendChild(renameBtn);
     
-    // Agregar todo al contenedor principal
-    barra.appendChild(titleDiv);
-    barra.appendChild(statsDiv);
-    barra.appendChild(speedDiv);
-    barra.appendChild(timeDiv);
-    barra.appendChild(urlDiv);
-    barra.appendChild(progressTextDiv);
-    barra.appendChild(progressDiv);
-    barra.appendChild(buttonDiv);
+    topRow.appendChild(titleContainer);
+    topRow.appendChild(buttonContainer);
     
+    // Fila de progreso
+    const progressContainer = document.createElement('div');
+    progressContainer.className = 'mb-2';
+    
+    const progressTextDiv = document.createElement('div');
+    progressTextDiv.className = 'd-flex justify-content-between align-items-center small mb-1';
+    progressTextDiv.innerHTML = '<span>Progreso: <span id="progreso-' + download_id + '">0%</span></span>';
+    
+    // Progress bar
+    const progressDiv = document.createElement('div');
+    progressDiv.className = 'progress';
+    progressDiv.style.height = '8px';
+    const progressBar = document.createElement('div');
+    progressBar.className = 'progress-bar';
+    progressBar.id = 'bar-' + download_id;
+    progressBar.setAttribute('role', 'progressbar');
+    progressBar.style.width = '0%';
+    progressDiv.appendChild(progressBar);
+    
+    progressContainer.appendChild(progressTextDiv);
+    progressContainer.appendChild(progressDiv);
+    
+    // Fila de información adicional (velocidad, tiempo)
+    const infoRow = document.createElement('div');
+    infoRow.className = 'd-flex flex-wrap gap-3 small text-muted mb-2';
+    
+    // Speed div - mostrar velocidad de descarga
+    const speedDiv = document.createElement('div');
+    speedDiv.className = 'download-speed';
+    speedDiv.id = 'speed-' + download_id;
+    speedDiv.innerHTML = '<strong>💨</strong> <span>Calculando...</span>';
+    
+    // Time div - mostrar tiempos de descarga
+    const timeDiv = document.createElement('div');
+    timeDiv.className = 'download-time';
+    timeDiv.id = 'time-' + download_id;
+    timeDiv.innerHTML = '<strong>⏱️</strong> <span>00:00</span>';
+    
+    infoRow.appendChild(speedDiv);
+    infoRow.appendChild(timeDiv);
+    
+    // URL div (colapsible para ahorrar espacio)
+    const urlContainer = document.createElement('div');
+    urlContainer.className = 'mt-1';
+    
+    const urlToggle = document.createElement('button');
+    urlToggle.className = 'btn btn-link btn-sm p-0 small text-info';
+    urlToggle.innerHTML = '🔗 Mostrar URL';
+    urlToggle.onclick = function() {
+        const urlDiv = document.getElementById('url-' + download_id);
+        if (urlDiv.style.display === 'none') {
+            urlDiv.style.display = 'block';
+            urlToggle.innerHTML = '🔗 Ocultar URL';
+        } else {
+            urlDiv.style.display = 'none';
+            urlToggle.innerHTML = '🔗 Mostrar URL';
+        }
+    };
+    
+    const urlDiv = document.createElement('div');
+    urlDiv.className = 'url-display small mt-1';
+    urlDiv.id = 'url-' + download_id;
+    urlDiv.style.display = 'none'; // Inicialmente oculto
+    urlDiv.innerHTML = '<span class="text-break">' + (url || 'N/A') + '</span>';
+    
+    urlContainer.appendChild(urlToggle);
+    urlContainer.appendChild(urlDiv);
+    
+    // Ensamblar todo
+    mainContainer.appendChild(topRow);
+    mainContainer.appendChild(progressContainer);
+    mainContainer.appendChild(infoRow);
+    mainContainer.appendChild(urlContainer);
+    
+    barra.appendChild(mainContainer);
     div.appendChild(barra);
-    console.log('Creado nuevo elemento de descarga:', download_id);
+    console.log('Creado nuevo elemento de descarga responsivo:', download_id);
     
     if (url) {
-        let urlDiv = document.getElementById('url-' + download_id);
         let copyBtn = document.createElement('button');
-        copyBtn.className = 'btn btn-outline-info btn-sm ms-2';
+        copyBtn.className = 'btn btn-outline-info btn-sm';
         copyBtn.innerHTML = '📋';
         copyBtn.title = 'Copiar URL';
         copyBtn.onclick = function() { copiarUrl(url); };
@@ -2229,7 +2369,9 @@ function actualizarProgreso(download_id) {
         let timeElement = document.getElementById('time-' + download_id);
         
         if (data.output_file && archivo) {
-            archivo.innerHTML = '<span class="status-indicator status-' + data.status + '"></span>Descargando: ' + data.output_file;
+            const fullText = 'Descargando: ' + data.output_file;
+            archivo.innerHTML = '<span class="status-indicator status-' + data.status + '"></span>' + fullText;
+            archivo.title = fullText; // Tooltip para ver el nombre completo
         }
         
         if (stats && data.total > 0) {
