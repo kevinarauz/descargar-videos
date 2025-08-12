@@ -813,6 +813,26 @@ default_html = '''
             }
         }
 
+        /* ================= Historial (layout responsive nombres largos) ================= */
+        #historial-container {max-width:100%;}
+        #historial-list {list-style:none;padding:0;margin:0;}
+        .historial-item {display:grid;grid-template-columns:1fr auto;gap:.85rem;align-items:start;padding:.75rem 1rem;margin-bottom:.75rem;border-radius:14px;background:linear-gradient(145deg,rgba(255,255,255,.08),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);position:relative;}
+        .historial-item:hover {background:linear-gradient(145deg,rgba(255,255,255,.12),rgba(255,255,255,.03));}
+        .historial-main {min-width:0;}
+        .historial-title {display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;font-weight:600;font-size:.8rem;line-height:1.15rem;text-decoration:none;color:#fff;}
+        .historial-item.expanded .historial-title {-webkit-line-clamp:unset;}
+        .historial-meta {font-size:.68rem;opacity:.78;margin-top:.35rem;word-break:break-word;}
+        .historial-meta .url-metadata {display:block;margin-top:.25rem;}
+        .historial-actions {display:flex;flex-direction:column;gap:.4rem;align-items:flex-end;min-width:70px;}
+        .historial-actions .btn {white-space:nowrap;padding:4px 8px;font-size:.6rem;}
+        .historial-actions .toggle-expand {background:#495065;border-color:#495065;color:#fff;}
+        .historial-actions .toggle-expand.active {background:#2f7c4d;border-color:#2f7c4d;}
+        @media (max-width:600px){
+            .historial-item {grid-template-columns:1fr;}
+            .historial-actions {flex-direction:row;flex-wrap:wrap;justify-content:flex-start;}
+            .historial-actions .btn {flex:1 1 calc(50% - 6px);}
+        }
+
         /* Scrollbar personalizada */
         ::-webkit-scrollbar {
             width: 8px;
@@ -891,38 +911,29 @@ default_html = '''
             {% if historial and historial|length > 0 %}
               <ul id="historial-list">
               {% for item in historial %}
-                <li class="d-flex justify-content-between align-items-center mb-2 historial-item" 
-                    data-filename="{{item.archivo|lower}}" 
-                    data-date="{{item.fecha_timestamp or 0}}"
-                    data-size="{{item.tamaño_bytes or 0}}">
-                  <div class="flex-grow-1 me-2">
-                    <a href="/static/{{item.archivo}}" download class="text-truncate d-block">{{item.archivo}}</a>
-                    <div class="download-stats">
-                      📦 {{item.tamaño}} • 📅 {{item.fecha}}
-                      {% if item.url %}
-                      <br><small class="url-metadata">
-                        🔗 <span class="text-break" style="font-size: 0.75em;">{{item.url}}</span>
-                      </small>
-                      {% endif %}
-                    </div>
-                  </div>
-                  <div class="d-flex flex-column">
-                    {% if item.url %}
-                    <button class="btn btn-outline-info btn-sm mb-1" data-url="{{item.url|e}}" onclick="copiarUrlFromData(this)" title="Copiar URL al portapapeles">
-                      📋
-                    </button>
-                    <button class="btn btn-outline-success btn-sm mb-1" data-url="{{item.url|e}}" onclick="reproducirUrlFromData(this)" title="Reproducir video">
-                      ▶️
-                    </button>
-                    {% endif %}
-                    <button class="btn btn-outline-warning btn-sm mb-1" data-filename="{{item.archivo|e}}" onclick="renombrarArchivoFromData(this)" title="Renombrar archivo">
-                      ✏️
-                    </button>
-                    <button class="btn btn-outline-danger btn-sm" data-filename="{{item.archivo|e}}" onclick="eliminarArchivoFromData(this)" title="Eliminar archivo">
-                      🗑️
-                    </button>
-                  </div>
-                </li>
+                                <li class="historial-item" 
+                                        data-filename="{{item.archivo|lower}}"
+                                        data-date="{{item.fecha_timestamp or 0}}"
+                                        data-size="{{item.tamaño_bytes or 0}}">
+                                    <div class="historial-main">
+                                        <a href="/static/{{item.archivo}}" download class="historial-title" title="{{item.archivo}}">{{item.archivo}}</a>
+                                        <div class="historial-meta">
+                                            📦 {{item.tamaño}} • 📅 {{item.fecha}}
+                                            {% if item.url %}
+                                                <span class="url-metadata">🔗 <span class="text-break" style="font-size:0.72em;">{{item.url}}</span></span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="historial-actions">
+                                        {% if item.url %}
+                                        <button class="btn btn-outline-info btn-sm" data-url="{{item.url|e}}" onclick="copiarUrlFromData(this)" title="Copiar URL">📋</button>
+                                        <button class="btn btn-outline-success btn-sm" data-url="{{item.url|e}}" onclick="reproducirUrlFromData(this)" title="Reproducir">▶️</button>
+                                        {% endif %}
+                                        <button class="btn btn-outline-warning btn-sm" data-filename="{{item.archivo|e}}" onclick="renombrarArchivoFromData(this)" title="Renombrar">✏️</button>
+                                        <button class="btn btn-outline-danger btn-sm" data-filename="{{item.archivo|e}}" onclick="eliminarArchivoFromData(this)" title="Eliminar">🗑️</button>
+                                        <button class="btn btn-sm toggle-expand" onclick="toggleHistItem(this)" title="Expandir/contraer">↕</button>
+                                    </div>
+                                </li>
               {% endfor %}
               </ul>
             {% else %}
@@ -1825,38 +1836,30 @@ function updateHistorial() {
                 } else {
                     let html = '<ul id="historial-list">';
                     
-                    data.historial.forEach((item, index) => {
-                        html += '<li class="d-flex justify-content-between align-items-center mb-2 historial-item" ' +
-                               'data-filename="' + item.archivo.toLowerCase() + '" ' +
-                               'data-date="' + (item.fecha_timestamp || 0) + '" ' +
-                               'data-size="' + (item.tamaño_bytes || 0) + '">' +
-                               '<div class="flex-grow-1 me-2">' +
-                               '<a href="/static/' + item.archivo + '" download class="text-truncate d-block">' + item.archivo + '</a>' +
-                               '<div class="download-stats">' +
-                               item.tamaño + ' • ' + item.fecha;
-                        
-                        if (item.url) {
-                            html += '<br><small class="url-metadata">' +
-                                   '<span class="text-break" style="font-size: 0.75em;">🔗 ' + item.url + '</span>' +
-                                   '</small>';
-                        }
-                        
-                        html += '</div></div>' +
-                               '<div class="btn-group-vertical" role="group">' +
-                               '<button class="btn btn-outline-info btn-sm mb-1" data-url="' + (item.url || '') + '" onclick="copiarUrlFromData(this)" title="Copiar URL al portapapeles">' +
-                               'Copiar' +
-                               '</button>' +
-                               '<button class="btn btn-outline-success btn-sm mb-1" data-url="' + (item.url || '') + '" onclick="reproducirUrlFromData(this)" title="Reproducir video">' +
-                               'Play' +
-                               '</button>' +
-                               '<button class="btn btn-outline-warning btn-sm mb-1" data-filename="' + item.archivo.replace(/"/g, '&quot;') + '" onclick="renombrarArchivoFromData(this)" title="Renombrar archivo">' +
-                               'Renombrar' +
-                               '</button>' +
-                               '<button class="btn btn-outline-danger btn-sm" data-filename="' + item.archivo.replace(/"/g, '&quot;') + '" onclick="eliminarArchivoFromData(this)" title="Eliminar archivo">' +
-                               'Eliminar' +
-                               '</button>' +
-                               '</div></li>';
-                    });
+            data.historial.forEach((item) => {
+            const safeName = item.archivo.replace(/"/g,'&quot;');
+            html += '<li class="historial-item" ' +
+                'data-filename="' + item.archivo.toLowerCase() + '" ' +
+                'data-date="' + (item.fecha_timestamp || 0) + '" ' +
+                'data-size="' + (item.tamaño_bytes || 0) + '">' +
+                '<div class="historial-main">' +
+                '<a href="/static/' + safeName + '" download class="historial-title" title="' + safeName + '">' + safeName + '</a>' +
+                '<div class="historial-meta">' +
+                item.tamaño + ' • ' + item.fecha;
+            if(item.url){
+                html += '<span class="url-metadata">🔗 <span class="text-break" style="font-size:0.72em;">' + item.url + '</span></span>';
+            }
+            html += '</div></div>' +
+                '<div class="historial-actions">';
+            if(item.url){
+                html += '<button class="btn btn-outline-info btn-sm" data-url="' + item.url + '" onclick="copiarUrlFromData(this)" title="Copiar URL">📋</button>' +
+                    '<button class="btn btn-outline-success btn-sm" data-url="' + item.url + '" onclick="reproducirUrlFromData(this)" title="Reproducir">▶️</button>';
+            }
+            html += '<button class="btn btn-outline-warning btn-sm" data-filename="' + safeName + '" onclick="renombrarArchivoFromData(this)" title="Renombrar">✏️</button>' +
+                '<button class="btn btn-outline-danger btn-sm" data-filename="' + safeName + '" onclick="eliminarArchivoFromData(this)" title="Eliminar">🗑️</button>' +
+                '<button class="btn btn-sm toggle-expand" onclick="toggleHistItem(this)" title="Expandir/contraer">↕</button>' +
+                '</div></li>';
+            });
                     
                     html += '</ul>';
                     historialContainer.innerHTML = html;
@@ -1874,6 +1877,15 @@ function updateHistorial() {
         .catch(error => {
             console.error('Error actualizando historial:', error);
         });
+}
+
+// Expandir / contraer un ítem de historial (mostrar nombre completo)
+function toggleHistItem(btn){
+    const item = btn.closest('.historial-item');
+    if(!item) return;
+    const expanded = item.classList.toggle('expanded');
+    btn.classList.toggle('active', expanded);
+    btn.textContent = expanded ? '⇡' : '↕';
 }
 
 // Función para extraer y mostrar metadatos M3U8
