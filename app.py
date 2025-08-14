@@ -1968,12 +1968,13 @@ function updateHistorial() {
                     
             data.historial.forEach((item) => {
             const safeName = item.archivo.replace(/"/g,'&quot;');
+            const downloadPath = item.ruta_descarga || item.archivo; // Usar ruta_descarga si existe, sino archivo
             html += '<li class="historial-item" ' +
                 'data-filename="' + item.archivo.toLowerCase() + '" ' +
                 'data-date="' + (item.fecha_timestamp || 0) + '" ' +
                 'data-size="' + (item.tamaño_bytes || 0) + '">' +
                 '<div class="historial-main">' +
-                '<a href="/static/' + safeName + '" download class="historial-title" title="' + safeName + '">' + safeName + '</a>' +
+                '<a href="/static/' + downloadPath + '" download class="historial-title" title="' + safeName + '">' + safeName + '</a>' +
                 '<div class="historial-meta">' +
                 item.tamaño + ' • ' + item.fecha;
             if(item.url){
@@ -3906,11 +3907,23 @@ def eliminar_archivo(filename):
         if not re.match(r'^[a-zA-Z0-9_\-\. ]+\.mp4$', filename):
             return jsonify({'success': False, 'error': 'Nombre de archivo no válido.'}), 400
         
+        # Buscar el archivo en toda la estructura de directorios
         static_dir = os.path.join(os.path.dirname(__file__), 'static')
-        file_path = os.path.join(static_dir, filename)
+        file_path = None
         
-        # Verificar que el archivo existe
-        if not os.path.exists(file_path):
+        # Primero intentar en el directorio raíz (compatibilidad)
+        direct_path = os.path.join(static_dir, filename)
+        if os.path.exists(direct_path):
+            file_path = direct_path
+        else:
+            # Buscar recursivamente usando find_all_mp4_files
+            all_files = find_all_mp4_files()
+            for mp4_file in all_files:
+                if os.path.basename(mp4_file) == filename:
+                    file_path = mp4_file
+                    break
+        
+        if not file_path:
             return jsonify({'success': False, 'error': 'El archivo no existe.'}), 404
         
         # Verificar que el archivo está en el directorio static (seguridad)
@@ -3919,12 +3932,14 @@ def eliminar_archivo(filename):
         
         # Eliminar el archivo
         os.remove(file_path)
+        print(f"🗑️ Archivo eliminado: {file_path}")
         
         # También eliminar el archivo de metadatos si existe
-        metadata_file = os.path.join(static_dir, f"{filename}.meta")
+        metadata_file = f"{file_path}.meta"
         if os.path.exists(metadata_file):
             try:
                 os.remove(metadata_file)
+                print(f"🗑️ Metadatos eliminados: {metadata_file}")
             except Exception as meta_error:
                 print(f"Error al eliminar metadatos para {filename}: {meta_error}")
         
@@ -4053,17 +4068,30 @@ def renombrar_archivo(filename):
         if len(nuevo_nombre_limpio) > 255:
             return jsonify({'success': False, 'error': 'El nombre del archivo es demasiado largo (máximo 255 caracteres).'}), 400
         
-        # Validar que el archivo original existe
+        # Buscar el archivo original en toda la estructura de directorios
         static_dir = os.path.join(os.path.dirname(__file__), 'static')
-        archivo_original = os.path.join(static_dir, filename)
+        archivo_original = None
         
-        print(f"📂 Verificando archivo original: {archivo_original}")
+        # Primero intentar en el directorio raíz (compatibilidad)
+        direct_path = os.path.join(static_dir, filename)
+        if os.path.exists(direct_path):
+            archivo_original = direct_path
+        else:
+            # Buscar recursivamente usando find_all_mp4_files
+            all_files = find_all_mp4_files()
+            for mp4_file in all_files:
+                if os.path.basename(mp4_file) == filename:
+                    archivo_original = mp4_file
+                    break
         
-        if not os.path.exists(archivo_original):
-            return jsonify({'success': False, 'error': f'El archivo "{filename}" no existe en el directorio static.'}), 404
+        print(f"📂 Archivo original encontrado: {archivo_original}")
         
-        # Verificar que el nuevo nombre no existe
-        archivo_nuevo = os.path.join(static_dir, nuevo_nombre_limpio)
+        if not archivo_original:
+            return jsonify({'success': False, 'error': f'El archivo "{filename}" no existe.'}), 404
+        
+        # El archivo renombrado debe ir en el mismo directorio que el original
+        directorio_original = os.path.dirname(archivo_original)
+        archivo_nuevo = os.path.join(directorio_original, nuevo_nombre_limpio)
         print(f"📂 Archivo destino: {archivo_nuevo}")
         
         if os.path.exists(archivo_nuevo):
@@ -4089,8 +4117,8 @@ def renombrar_archivo(filename):
             return jsonify({'success': False, 'error': error_msg}), 500
         
         # Renombrar también el archivo de metadatos si existe
-        metadata_original = os.path.join(static_dir, f"{filename}.meta")
-        metadata_nuevo = os.path.join(static_dir, f"{nuevo_nombre_limpio}.meta")
+        metadata_original = f"{archivo_original}.meta"
+        metadata_nuevo = f"{archivo_nuevo}.meta"
         
         print(f"🔍 Verificando metadatos:")
         print(f"   📋 Archivo original: {metadata_original}")
@@ -4123,19 +4151,12 @@ def renombrar_archivo(filename):
                     
                     print(f"✅ Archivo de metadatos nuevo creado: {metadata_nuevo}")
                     
-                    # Verificar que se escribió correctamente
-                    if os.path.exists(metadata_nuevo):
-                        with open(metadata_nuevo, 'r', encoding='utf-8') as f:
-                            verificacion = json.load(f)
-                            print(f"🔍 Verificación - URL: {verificacion.get('url', 'NO ENCONTRADA')}")
-                    
                     # Eliminar archivo de metadatos original
-                    os.remove(metadata_original)
-                    print(f"🗑️ Archivo de metadatos original eliminado: {metadata_original}")
-                    
-                    # Verificar que la URL se preservó
-                    if 'url' in metadata:
-                        print(f"📋 URL preservada en memoria: {metadata['url']}")
+                    try:
+                        os.remove(metadata_original)
+                        print(f"🗑️ Archivo de metadatos original eliminado: {metadata_original}")
+                    except Exception as delete_error:
+                        print(f"⚠️ No se pudo eliminar el archivo de metadatos original: {delete_error}")
                 else:
                     print(f"⚠️ No se pudieron cargar los metadatos de {filename}")
                     
@@ -4662,12 +4683,13 @@ def get_historial():
         import os
         from datetime import datetime
         
-        # Obtener todos los archivos MP4 del directorio static
+        # Obtener todos los archivos MP4 del directorio static (incluyendo subdirectorios)
         archivos = []
-        static_dir = 'static'
         
-        if os.path.exists(static_dir):
-            for archivo in glob.glob(os.path.join(static_dir, '*.mp4')):
+        # Usar la función find_all_mp4_files para buscar recursivamente
+        archivos_mp4 = find_all_mp4_files()
+        
+        for archivo in archivos_mp4:
                 nombre_archivo = os.path.basename(archivo)
                 try:
                     file_stats = os.stat(archivo)
@@ -4710,8 +4732,12 @@ def get_historial():
                         except Exception as date_error:
                             print(f"⚠️ Error parseando fecha de metadata: {date_error}")
                     
+                    # Calcular la ruta relativa desde static para el enlace de descarga
+                    ruta_relativa = os.path.relpath(archivo, 'static').replace('\\', '/')
+                    
                     archivos.append({
                         'archivo': nombre_archivo,
+                        'ruta_descarga': ruta_relativa,  # Para el enlace de descarga
                         'tamaño': format_file_size(file_stats.st_size),
                         'tamaño_bytes': file_stats.st_size,
                         'fecha': fecha_para_mostrar,
