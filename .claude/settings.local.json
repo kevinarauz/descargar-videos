@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(python:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(del README_NUEVO.md DOWNLOAD_STATE_STRUCTURE.md index.html temp_output.html)",
+      "Bash(rm:*)"
     ],
     "defaultMode": "acceptEdits"
   }
