@@ -3625,6 +3625,9 @@ def descargar():
         }
     
     def run_download():
+        # Variables del scope externo
+        nonlocal final_output_path
+        
         # Crear directorio temporal único para esta descarga (fuera del try)
         temp_dir = os.path.join(os.path.dirname(__file__), TEMP_DIR, download_id)
         
@@ -3644,7 +3647,7 @@ def descargar():
             workers = get_current_workers()
             
             # Log inicio de descarga
-            log_download_start(m3u8_url, filename, current_speed_mode)
+            log_download_start(m3u8_url, output_file, current_speed_mode)
             
             # Descarga de segmentos con directorio específico y workers configurables
             downloader = M3U8Downloader(
@@ -3745,7 +3748,7 @@ def descargar():
                 multi_progress[download_id]['porcentaje'] = porcentaje
                 
                 # Log progreso cada 25%
-                log_download_progress(filename, porcentaje)
+                log_download_progress(output_file, porcentaje)
                 
                 # Guardar estado cada 10 segmentos
                 if (i + 1) % 10 == 0:
@@ -3763,7 +3766,7 @@ def descargar():
             if multi_progress[download_id]['status'] == 'downloading':
                 segment_files = [f'segment_{i:05d}.ts' for i in range(len(segment_urls))]
                 downloader._merge_segments(segment_files)
-                # Usar la ruta organizada final
+                # Usar la ruta organizada final (ya calculada con lógica de duplicados)
                 output_path = os.path.abspath(os.path.join(original_dir, output_file))
                 if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
                     # Asegurar que el directorio de destino existe
@@ -3778,7 +3781,7 @@ def descargar():
                     total_time = multi_progress[download_id]['total_time']
                     duration_formatted = f"{int(total_time//60):02d}:{int(total_time%60):02d}"
                     speed_mbps = multi_progress[download_id].get('download_speed', 0)
-                    log_download_complete(filename, duration_formatted, speed_mbps)
+                    log_download_complete(output_file, duration_formatted, speed_mbps)
                     
                     # Guardar metadatos del video (URL y fecha de descarga)
                     try:
