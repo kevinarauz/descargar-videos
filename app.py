@@ -4,8 +4,32 @@ import re
 import os
 import glob
 import time
+from datetime import datetime
 from flask import Flask, render_template_string, request, send_file, jsonify
 from test import M3U8Downloader
+
+# ============================================================================
+# 🔧 CONFIGURACIÓN PERSONAL - Ajusta estos valores según tus necesidades
+# ============================================================================
+
+# Workers por descarga - Ajusta según tu conexión a internet
+MAX_WORKERS_NORMAL = 30      # Modo normal (para usar internet simultáneamente)
+MAX_WORKERS_TURBO = 100      # Modo turbo (velocidad máxima)
+
+# Modo de velocidad por defecto ('normal' o 'turbo')
+DEFAULT_SPEED_MODE = 'normal'
+
+# Organización automática de archivos por fecha
+AUTO_ORGANIZE_BY_DATE = True  # True: crea carpetas como "static/2024-01/"
+
+# Logging mejorado
+ENABLE_DETAILED_LOGGING = True  # True: muestra más información durante descargas
+
+# Otras configuraciones
+MAX_CONCURRENT_DOWNLOADS = 5
+DEFAULT_QUALITY = 'best'  # best, 1080p, 720p, 480p
+
+# ============================================================================
 
 # Configuración de la aplicación
 app = Flask(__name__)
@@ -16,12 +40,57 @@ multi_progress = {}
 cancelled_downloads = set()
 download_queue_storage = []  # Cola persistente
 queue_running = False
+current_speed_mode = DEFAULT_SPEED_MODE  # Variable global para el modo de velocidad
 
-# Configuración
-MAX_CONCURRENT_DOWNLOADS = 5
+# Directorios
 STATIC_DIR = 'static'
 TEMP_DIR = 'temp_segments'
-DEFAULT_QUALITY = 'best'  # best, 1080p, 720p, 480p
+
+# Funciones de logging mejorado
+def log_info(message):
+    """Log información si el logging detallado está habilitado"""
+    if ENABLE_DETAILED_LOGGING:
+        timestamp = datetime.now().strftime('%H:%M:%S')
+        print(f"[{timestamp}] {message}")
+
+def log_download_start(url, filename, mode):
+    """Log inicio de descarga"""
+    workers = MAX_WORKERS_TURBO if mode == 'turbo' else MAX_WORKERS_NORMAL
+    log_info(f"🚀 Iniciando descarga en modo {mode.upper()} ({workers} workers)")
+    log_info(f"📁 Archivo: {filename}")
+    log_info(f"🔗 URL: {url[:60]}{'...' if len(url) > 60 else ''}")
+
+def log_download_progress(filename, percentage):
+    """Log progreso cada 25%"""
+    if percentage in [25, 50, 75]:
+        log_info(f"📊 {filename}: {percentage}% completado")
+
+def log_download_complete(filename, duration, speed_mbps=None):
+    """Log finalización de descarga"""
+    log_info(f"✅ Completado: {filename}")
+    log_info(f"⏱️ Tiempo total: {duration}")
+    if speed_mbps:
+        log_info(f"⚡ Velocidad promedio: {speed_mbps:.1f} MB/s")
+
+def log_download_error(filename, error):
+    """Log errores de descarga"""
+    log_info(f"❌ Error en {filename}: {str(error)}")
+
+# Funciones para organización por fecha
+def get_organized_path(filename):
+    """Obtiene la ruta organizada por fecha si está habilitado"""
+    if AUTO_ORGANIZE_BY_DATE:
+        month_folder = datetime.now().strftime('%Y-%m')
+        organized_dir = os.path.join(STATIC_DIR, month_folder)
+        os.makedirs(organized_dir, exist_ok=True)
+        return os.path.join(organized_dir, filename)
+    else:
+        return os.path.join(STATIC_DIR, filename)
+
+# Funciones para gestión de velocidad
+def get_current_workers():
+    """Obtiene el número de workers según el modo actual"""
+    return MAX_WORKERS_TURBO if current_speed_mode == 'turbo' else MAX_WORKERS_NORMAL
 
 # Funciones para persistencia
 def save_download_state():
@@ -1054,6 +1123,21 @@ default_html = '''
             <input type="text" name="output_name" id="output-name" class="form-control" placeholder="mi-video">
             <div class="form-text text-light opacity-75">Sin extensión .mp4 - se añadirá automáticamente</div>
           </div>
+          
+          <!-- Selector de velocidad -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold">⚡ Modo de velocidad</label>
+            <div class="d-flex gap-2">
+              <button type="button" id="speed-mode-btn" class="btn btn-outline-warning btn-sm d-flex align-items-center gap-2" onclick="toggleSpeedMode()">
+                <span id="speed-mode-icon">🐢</span>
+                <span id="speed-mode-text">Normal</span>
+                <span id="speed-mode-workers">(30 workers)</span>
+              </button>
+              <small class="text-light opacity-75 align-self-center">
+                Normal: Para usar internet simultáneamente | Turbo: Velocidad máxima
+              </small>
+            </div>
+          </div>
           <div class="d-flex gap-3 flex-wrap">
             <button type="button" class="btn btn-info d-flex align-items-center gap-2" onclick="playM3U8()">
               <span>▶️</span> Vista Previa
@@ -1158,23 +1242,95 @@ function updateQuality(value) {
     showNotification('Calidad establecida: ' + value, 'info');
 }
 
+// ============================================================================
+// FUNCIONES DEL SELECTOR DE VELOCIDAD
+// ============================================================================
+
+// Variables globales para el selector de velocidad
+let currentSpeedMode = 'normal';
+let speedModeData = {
+    normal: { workers: 30, label: 'Normal', icon: '🐢' },
+    turbo: { workers: 100, label: 'Turbo', icon: '🚀' }
+};
+
+// Cargar modo de velocidad actual
+async function loadSpeedMode() {
+    try {
+        const response = await fetch('/api/speed_mode');
+        const data = await response.json();
+        if (data.success) {
+            currentSpeedMode = data.current_mode;
+            speedModeData.normal.workers = data.modes.normal.workers;
+            speedModeData.turbo.workers = data.modes.turbo.workers;
+            updateSpeedModeUI();
+        }
+    } catch (error) {
+        console.error('Error cargando modo de velocidad:', error);
+    }
+}
+
+// Actualizar interfaz del selector de velocidad
+function updateSpeedModeUI() {
+    const mode = speedModeData[currentSpeedMode];
+    document.getElementById('speed-mode-icon').textContent = mode.icon;
+    document.getElementById('speed-mode-text').textContent = mode.label;
+    document.getElementById('speed-mode-workers').textContent = `(${mode.workers} workers)`;
+    
+    const btn = document.getElementById('speed-mode-btn');
+    if (currentSpeedMode === 'turbo') {
+        btn.className = 'btn btn-warning btn-sm d-flex align-items-center gap-2';
+    } else {
+        btn.className = 'btn btn-outline-warning btn-sm d-flex align-items-center gap-2';
+    }
+}
+
+// Toggle entre modos de velocidad
+async function toggleSpeedMode() {
+    const newMode = currentSpeedMode === 'normal' ? 'turbo' : 'normal';
+    
+    try {
+        const response = await fetch('/api/speed_mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: newMode })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            currentSpeedMode = data.current_mode;
+            updateSpeedModeUI();
+            showNotification(`Modo cambiado a ${speedModeData[currentSpeedMode].label} (${data.workers} workers)`, 'info');
+        } else {
+            showNotification('Error cambiando modo de velocidad: ' + data.error, 'danger');
+        }
+    } catch (error) {
+        showNotification('Error cambiando modo de velocidad', 'danger');
+        console.error('Error:', error);
+    }
+}
+
 // Sistema de notificaciones
 function showNotification(message, type = 'info') {
     if (!userConfig.notifications) return;
     
+    // Convertir saltos de línea a <br> para mejor formato
+    const formattedMessage = message.replace(/\n/g, '<br>');
+    
     const notification = document.createElement('div');
     notification.className = 'alert alert-' + type + ' position-fixed';
-    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px; max-width: 400px;';
     notification.innerHTML = `
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        ${message}
+        <div style="font-size: 0.9rem; line-height: 1.4;">${formattedMessage}</div>
     `;
     
     document.body.appendChild(notification);
     
+    // Más tiempo para leer notificaciones con información extra
+    const timeout = type === 'success' && message.includes('Velocidad') ? 5000 : 3000;
     setTimeout(() => {
         notification.remove();
-    }, 3000);
+    }, timeout);
 }
 
 // Sistema de búsqueda y filtros
@@ -2516,11 +2672,21 @@ function actualizarProgreso(download_id) {
                     '</div>';
             }
             
-            // Mostrar notificación solo una vez
+            // Mostrar notificación solo una vez con información mejorada
             const notificationKey = download_id + '_completed';
             if (!notificacionesMostradas.has(notificationKey)) {
                 notificacionesMostradas.add(notificationKey);
-                showNotification('Descarga completada: ' + data.output_file, 'success');
+                
+                // Preparar información adicional
+                let message = `✅ Descarga completada: ${data.output_file}`;
+                if (data.total_time_formatted) {
+                    message += `\n⏱️ Tiempo: ${data.total_time_formatted}`;
+                }
+                if (data.download_speed && data.download_speed > 0) {
+                    message += `\n⚡ Velocidad promedio: ${data.download_speed.toFixed(1)} MB/s`;
+                }
+                
+                showNotification(message, 'success');
             }
             
             // Actualizar el historial cuando se complete una descarga
@@ -2972,6 +3138,16 @@ function copiarUrlFallback(url) {
     
     document.body.removeChild(textArea);
 }
+
+// ============================================================================
+// INICIALIZACIÓN
+// ============================================================================
+
+// Inicializar cuando se carga la página
+document.addEventListener('DOMContentLoaded', function() {
+    loadUserConfig();
+    loadSpeedMode();
+});
 </script>
 </body>
 </html>
@@ -3404,14 +3580,24 @@ def descargar():
                 print(f"Error extrayendo nombre de M3U8: {e}")
                 output_file = f'video_{uuid.uuid4().hex[:8]}.mp4'
         
-        # Verificar si el archivo ya existe
-        static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
-        if os.path.exists(os.path.join(static_dir, output_file)):
+        # Obtener ruta organizada por fecha si está habilitado
+        final_output_path = get_organized_path(output_file)
+        
+        # Verificar si el archivo ya existe en la ruta final
+        if os.path.exists(final_output_path):
             base_name = output_file[:-4]  # Sin .mp4
             counter = 1
-            while os.path.exists(os.path.join(static_dir, f"{base_name}_{counter}.mp4")):
+            while True:
+                test_filename = f"{base_name}_{counter}.mp4"
+                test_path = get_organized_path(test_filename)
+                if not os.path.exists(test_path):
+                    output_file = test_filename
+                    final_output_path = test_path
+                    break
                 counter += 1
-            output_file = f"{base_name}_{counter}.mp4"
+        
+        # Directorios para compatibilidad
+        static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
         
         # Crear nuevo download_id
         download_id = uuid.uuid4().hex[:8]
@@ -3454,11 +3640,17 @@ def descargar():
                 os.makedirs(temp_dir, exist_ok=True)
             original_dir = os.getcwd()
             
-            # Descarga de segmentos con directorio específico y calidad optimizada
+            # Obtener número de workers según modo actual
+            workers = get_current_workers()
+            
+            # Log inicio de descarga
+            log_download_start(m3u8_url, filename, current_speed_mode)
+            
+            # Descarga de segmentos con directorio específico y workers configurables
             downloader = M3U8Downloader(
                 m3u8_url=m3u8_url, 
                 output_filename=output_file, 
-                max_workers=1000,  # EXTREMO para internet súper rápido
+                max_workers=workers,
                 temp_dir=temp_dir
             )
             segment_urls = downloader._get_segment_urls()
@@ -3552,6 +3744,9 @@ def descargar():
                 multi_progress[download_id]['current'] = i + 1
                 multi_progress[download_id]['porcentaje'] = porcentaje
                 
+                # Log progreso cada 25%
+                log_download_progress(filename, porcentaje)
+                
                 # Guardar estado cada 10 segmentos
                 if (i + 1) % 10 == 0:
                     save_download_state()
@@ -3568,17 +3763,22 @@ def descargar():
             if multi_progress[download_id]['status'] == 'downloading':
                 segment_files = [f'segment_{i:05d}.ts' for i in range(len(segment_urls))]
                 downloader._merge_segments(segment_files)
-                static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
-                if not os.path.exists(static_dir):
-                    os.makedirs(static_dir)
-                static_path = os.path.join(static_dir, output_file)
+                # Usar la ruta organizada final
                 output_path = os.path.abspath(os.path.join(original_dir, output_file))
                 if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                    os.replace(output_path, static_path)
+                    # Asegurar que el directorio de destino existe
+                    os.makedirs(os.path.dirname(final_output_path), exist_ok=True)
+                    os.replace(output_path, final_output_path)
                     multi_progress[download_id]['status'] = 'done'
                     multi_progress[download_id]['end_time'] = time.time()
                     multi_progress[download_id]['total_time'] = multi_progress[download_id]['end_time'] - multi_progress[download_id]['start_time']
                     multi_progress[download_id]['can_resume'] = False
+                    
+                    # Log descarga completada
+                    total_time = multi_progress[download_id]['total_time']
+                    duration_formatted = f"{int(total_time//60):02d}:{int(total_time%60):02d}"
+                    speed_mbps = multi_progress[download_id].get('download_speed', 0)
+                    log_download_complete(filename, duration_formatted, speed_mbps)
                     
                     # Guardar metadatos del video (URL y fecha de descarga)
                     try:
@@ -4350,6 +4550,51 @@ def get_active_downloads():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/speed_mode', methods=['GET', 'POST'])
+def handle_speed_mode():
+    """Maneja el cambio de modo de velocidad"""
+    global current_speed_mode
+    
+    if request.method == 'GET':
+        # Obtener modo actual
+        workers = get_current_workers()
+        return jsonify({
+            'success': True,
+            'current_mode': current_speed_mode,
+            'workers': workers,
+            'modes': {
+                'normal': {'workers': MAX_WORKERS_NORMAL, 'label': 'Normal'},
+                'turbo': {'workers': MAX_WORKERS_TURBO, 'label': 'Turbo'}
+            }
+        })
+    
+    elif request.method == 'POST':
+        # Cambiar modo
+        try:
+            data = request.get_json()
+            new_mode = data.get('mode', '').lower()
+            
+            if new_mode not in ['normal', 'turbo']:
+                return jsonify({'success': False, 'error': 'Modo no válido'}), 400
+            
+            current_speed_mode = new_mode
+            workers = get_current_workers()
+            
+            log_info(f"Modo de velocidad cambiado a {new_mode.upper()} ({workers} workers)")
+            
+            return jsonify({
+                'success': True,
+                'current_mode': current_speed_mode,
+                'workers': workers,
+                'message': f'Modo cambiado a {new_mode.upper()}'
+            })
+            
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    # Método no permitido
+    return jsonify({'success': False, 'error': 'Método no permitido'}), 405
 
 @app.route('/api/historial', methods=['GET'])
 def get_historial():
