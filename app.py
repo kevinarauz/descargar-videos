@@ -3130,26 +3130,25 @@ document.addEventListener('DOMContentLoaded', function() {
 @app.route('/', methods=['GET'])
 def index():
     url = request.args.get('url', '')
-    # Historial: todos los archivos MP4 en static con información adicional
-    static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
+    # Historial: todos los archivos MP4 (incluyendo subdirectorios organizados por fecha)
     archivos = []
-    if os.path.exists(static_dir):
-        for f in glob.glob(os.path.join(static_dir, '*.mp4')):
-            filename = os.path.basename(f)
-            metadata = load_video_metadata(filename)
-            file_stats = os.stat(f)
-            
-            archivo_info = {
-                'archivo': filename,
-                'tamaño': format_file_size(file_stats.st_size),
-                'tamaño_bytes': file_stats.st_size,
-                'fecha': format_modification_time(file_stats.st_mtime),
-                'fecha_timestamp': file_stats.st_mtime,
-                'url': metadata['url'] if metadata and 'url' in metadata else None
-            }
-            archivos.append(archivo_info)
-        # Ordenar por fecha de modificación (más reciente primero)
-        archivos.sort(key=lambda x: x['fecha_timestamp'], reverse=True)
+    for f in find_all_mp4_files():
+        filename = os.path.basename(f)
+        metadata = find_video_metadata(filename)
+        file_stats = os.stat(f)
+        
+        archivo_info = {
+            'archivo': filename,
+            'tamaño': format_file_size(file_stats.st_size),
+            'tamaño_bytes': file_stats.st_size,
+            'fecha': format_modification_time(file_stats.st_mtime),
+            'fecha_timestamp': file_stats.st_mtime,
+            'url': metadata['url'] if metadata and 'url' in metadata else None
+        }
+        archivos.append(archivo_info)
+    
+    # Ordenar por fecha de modificación (más reciente primero)
+    archivos.sort(key=lambda x: x['fecha_timestamp'], reverse=True)
     
     # Estadísticas de descargas activas
     stats = get_download_stats()
@@ -3474,7 +3473,7 @@ def periodic_cleanup():
 periodic_cleanup()
 
 def save_video_metadata(filename, url):
-    """Guarda metadatos del video en un archivo JSON"""
+    """Guarda metadatos del video en un archivo JSON (función legacy)"""
     import json
     import datetime
     
@@ -3493,8 +3492,33 @@ def save_video_metadata(filename, url):
     except Exception as e:
         print(f"Error al guardar metadatos para {filename}: {e}")
 
+def save_video_metadata_with_path(file_path, url):
+    """Guarda metadatos del video usando la ruta completa del archivo"""
+    import json
+    import datetime
+    
+    # Crear archivo de metadatos en la misma ubicación que el video
+    metadata_file = f"{file_path}.meta"
+    
+    # Extraer solo el nombre del archivo para el metadata
+    filename = os.path.basename(file_path)
+    
+    metadata = {
+        'url': url,
+        'download_date': datetime.datetime.now().isoformat(),
+        'filename': filename,
+        'file_path': file_path
+    }
+    
+    try:
+        with open(metadata_file, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=2)
+        log_info(f"Metadatos guardados: {metadata_file}")
+    except Exception as e:
+        print(f"Error al guardar metadatos para {file_path}: {e}")
+
 def load_video_metadata(filename):
-    """Carga metadatos del video desde el archivo JSON"""
+    """Carga metadatos del video desde el archivo JSON (búsqueda legacy)"""
     import json
     
     static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
@@ -3508,6 +3532,61 @@ def load_video_metadata(filename):
             print(f"Error al leer metadatos para {filename}: {e}")
     
     return None
+
+def load_video_metadata_by_path(file_path):
+    """Carga metadatos del video usando la ruta completa del archivo"""
+    import json
+    
+    metadata_file = f"{file_path}.meta"
+    
+    if os.path.exists(metadata_file):
+        try:
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error al leer metadatos para {file_path}: {e}")
+    
+    return None
+
+def find_video_metadata(filename):
+    """Busca metadatos en múltiples ubicaciones (legacy y organizado por fecha)"""
+    import glob
+    import json
+    
+    # Primero intentar la ubicación legacy
+    metadata = load_video_metadata(filename)
+    if metadata:
+        return metadata
+    
+    # Si no se encuentra, buscar en subdirectorios organizados por fecha
+    static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
+    
+    # Buscar en subdirectorios como static/2025-01/, static/2025-02/, etc.
+    for metadata_file in glob.glob(os.path.join(static_dir, '**', f"{filename}.meta"), recursive=True):
+        try:
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error al leer metadatos desde {metadata_file}: {e}")
+            continue
+    
+    return None
+
+def find_all_mp4_files():
+    """Busca todos los archivos MP4 tanto en ubicación legacy como en subdirectorios organizados"""
+    import glob
+    
+    static_dir = os.path.join(os.path.dirname(__file__), STATIC_DIR)
+    mp4_files = []
+    
+    if not os.path.exists(static_dir):
+        return mp4_files
+    
+    # Buscar archivos MP4 en todas las ubicaciones (recursivamente)
+    for f in glob.glob(os.path.join(static_dir, '**', '*.mp4'), recursive=True):
+        mp4_files.append(f)
+    
+    return mp4_files
 
 @app.route('/descargar', methods=['POST'])
 def descargar():
@@ -3760,7 +3839,8 @@ def descargar():
                     
                     # Guardar metadatos del video (URL y fecha de descarga)
                     try:
-                        save_video_metadata(output_file, m3u8_url)
+                        # Pasar la ruta completa para metadatos correctos
+                        save_video_metadata_with_path(final_output_path, m3u8_url)
                     except Exception as meta_error:
                         print(f"Error al guardar metadatos: {meta_error}")
                 else:
@@ -4022,7 +4102,7 @@ def renombrar_archivo(filename):
                 print(f"🔄 Iniciando proceso de metadatos...")
                 
                 # Cargar metadatos existentes
-                metadata = load_video_metadata(filename)
+                metadata = find_video_metadata(filename)
                 print(f"📋 Metadatos cargados: {metadata}")
                 
                 if metadata:
@@ -4161,7 +4241,7 @@ def renombrar_descarga_activa(download_id):
             # Si ya existe un archivo de metadatos, preservar información adicional
             if os.path.exists(metadata_nuevo):
                 try:
-                    existing_metadata = load_video_metadata(nuevo_nombre_limpio)
+                    existing_metadata = find_video_metadata(nuevo_nombre_limpio)
                     if existing_metadata:
                         # Preservar datos existentes y actualizar con nuevos
                         existing_metadata.update(metadata)
@@ -4250,7 +4330,7 @@ def search_videos():
             for f in glob.glob(os.path.join(static_dir, '*.mp4')):
                 filename = os.path.basename(f)
                 file_stats = os.stat(f)
-                metadata = load_video_metadata(filename)
+                metadata = find_video_metadata(filename)
                 
                 # Aplicar filtros de búsqueda
                 if query and query not in filename.lower():
@@ -4598,7 +4678,7 @@ def get_historial():
                     fecha_descarga = None
                     
                     try:
-                        metadata = load_video_metadata(nombre_archivo)
+                        metadata = find_video_metadata(nombre_archivo)
                         if metadata:
                             url_asociada = metadata.get('url')
                             fecha_descarga = metadata.get('download_date')
