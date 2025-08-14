@@ -6,7 +6,7 @@ import glob
 import time
 from datetime import datetime
 from flask import Flask, render_template_string, request, send_file, jsonify
-from test import M3U8Downloader
+from m3u8_downloader import M3U8Downloader
 
 # ============================================================================
 # 🔧 CONFIGURACIÓN PERSONAL - Ajusta estos valores según tus necesidades

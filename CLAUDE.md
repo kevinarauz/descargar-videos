@@ -33,7 +33,7 @@ Verificar instalación: `ffmpeg -version`
 - Implementa persistencia del estado de descarga vía `download_state.json`
 - Gestiona operaciones de archivos en el directorio `static/` para videos descargados
 
-**Clase M3U8 Downloader (`test.py`)**
+**Clase M3U8 Downloader (`m3u8_downloader.py`)**
 - Lógica principal de descarga para playlists M3U8
 - Soporta descarga paralela de segmentos de alto rendimiento (workers configurables)
 - Implementa lógica de reintentos y pooling de conexiones para confiabilidad

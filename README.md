@@ -112,7 +112,7 @@ La aplicación estará disponible en: `http://localhost:5000`
 ```
 descargar-videos/
 ├── app.py              # Aplicación Flask principal
-├── test.py             # Clase M3U8Downloader
+├── m3u8_downloader.py  # Clase M3U8Downloader
 ├── README.md           # Este archivo
 ├── .gitignore          # Archivos ignorados por Git
 ├── static/             # Archivos MP4 descargados (no en Git)
