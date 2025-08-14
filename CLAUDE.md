@@ -1,105 +1,113 @@
 # CLAUDE.md
 
-Este archivo proporciona guía a Claude Code (claude.ai/code) al trabajar con código en este repositorio.
-
-## Resumen del Proyecto
-
-Este es un descargador de videos M3U8 de alto rendimiento con una interfaz web moderna. La aplicación proporciona una solución optimizada para descargar videos HLS (HTTP Live Streaming) con características como descarga concurrente, seguimiento de progreso en tiempo real, reanudación de descargas y múltiples descargas simultáneas.
-
-## Arquitectura
-
-### Componentes Principales
-
-- **Servidor Web Flask** (`app.py`): Aplicación principal que proporciona endpoints de API REST y sirve la interfaz web
-- **Clase M3U8Downloader** (`test.py`): Motor de descarga principal con procesamiento paralelo optimizado (hasta 1000 workers)
-- **Interfaz Web** (`index.html`): UI moderna y responsiva con monitoreo de progreso en tiempo real
-- **Gestión de Estado**: Estado persistente de descargas usando `download_state.json` para recuperación entre reinicios
-
-### Características Técnicas Clave
-
-- **Descargas de Alto Rendimiento**: Usa ThreadPoolExecutor con workers configurables (predeterminado 30, puede llegar hasta 1000)
-- **Sesión HTTP Optimizada**: HTTPAdapter personalizado con pool de conexiones y reintentos automáticos
-- **Procesamiento de Segmentos**: Descarga segmentos de playlist M3U8 en paralelo, luego los une usando FFmpeg
-- **Capacidad de Reanudación**: Puede reanudar descargas interrumpidas detectando segmentos existentes
-- **Sistema de Cola**: Gestiona múltiples descargas simultáneas con límites configurables (predeterminado 5 concurrentes)
+Este archivo proporciona orientación a Claude Code (claude.ai/code) al trabajar con el código en este repositorio.
 
 ## Comandos de Desarrollo
 
-### Iniciar la Aplicación
+### Ejecutar la Aplicación
 ```bash
 python app.py
 ```
-La aplicación se ejecuta en `http://localhost:5000`
+La aplicación Flask se iniciará en `http://localhost:5000`
 
 ### Instalar Dependencias
 ```bash
 pip install -r requirements.txt
 ```
 
-### Dependencias Externas Requeridas
-- **FFmpeg**: Debe estar instalado y disponible en PATH para la unión de segmentos de video
-  - Windows: Descargar desde https://ffmpeg.org/download.html
-  - Linux: `sudo apt install ffmpeg`
-  - macOS: `brew install ffmpeg`
+### Requisito de FFmpeg
+Este proyecto requiere que FFmpeg esté instalado y disponible en el PATH del sistema para la fusión de segmentos de video:
+- **Windows**: Descargar desde [FFmpeg.org](https://ffmpeg.org/download.html) y agregar al PATH
+- **Linux**: `sudo apt install ffmpeg`
+- **macOS**: `brew install ffmpeg`
 
-### Verificar Instalación de FFmpeg
-```bash
-ffmpeg -version
-```
+Verificar instalación: `ffmpeg -version`
 
-## Estructura de Archivos Clave
+## Descripción de la Arquitectura
 
-```
-├── app.py                    # Aplicación Flask principal con endpoints API
-├── test.py                   # Clase M3U8Downloader (motor de descarga principal)
-├── index.html                # Interfaz web con UI en tiempo real
-├── requirements.txt          # Dependencias de Python
-├── download_state.json       # Estado persistente de descargas (auto-generado)
-├── static/                   # Almacenamiento de archivos MP4 descargados
-└── temp_segments/           # Almacenamiento temporal de segmentos durante descargas
-```
+### Componentes Principales
 
-## Detalles Técnicos Importantes
+**Aplicación Web Flask (`app.py`)**
+- Servidor web principal que sirve tanto la UI como los endpoints de API
+- Maneja múltiples descargas concurrentes con gestión de hilos
+- Implementa persistencia del estado de descarga vía `download_state.json`
+- Gestiona operaciones de archivos en el directorio `static/` para videos descargados
 
-### Gestión de Estado de Descargas
-La aplicación mantiene estado persistente en `download_state.json` con:
-- Seguimiento de progreso de descargas activas
-- Gestión de cola de descargas
-- Información de capacidad de reanudación
-- Estados de error y datos de recuperación
+**Clase M3U8 Downloader (`test.py`)**
+- Lógica principal de descarga para playlists M3U8
+- Soporta descarga paralela de segmentos de alto rendimiento (workers configurables)
+- Implementa lógica de reintentos y pooling de conexiones para confiabilidad
+- Maneja playlists maestras y selección de calidad automáticamente
+- Usa FFmpeg para la fusión final de video
 
-Ver `DOWNLOAD_STATE_STRUCTURE.md` para esquema detallado del estado.
+**Interfaz Web (`index.html` incrustado en `app.py`)**
+- UI responsiva moderna con seguimiento de progreso en tiempo real
+- Soporta múltiples descargas simultáneas con barras de progreso visuales
+- Reproductor de video M3U8 integrado usando hls.js
+- Historial de descargas y gestión de archivos
 
-### Optimizaciones de Rendimiento
-- **1000 workers concurrentes** para máximo paralelismo
-- **Chunks de 8MB** para transferencias de alta velocidad
-- **Pool de conexiones** con sesiones HTTP persistentes
-- **Headers de compresión Brotli** para reducir ancho de banda
-- **Lógica de reintentos inteligente** para segmentos fallidos
+### Características Principales
+
+**Descargas de Alto Rendimiento**
+- Hasta 1000 workers simultáneos para máximo throughput
+- Sesión HTTP optimizada con pooling de conexiones
+- Tamaños de chunk de 8MB para transferencias de alta velocidad
+- Headers de compresión (Brotli/gzip) para eficiencia de ancho de banda
+
+**Gestión de Descargas**
+- Capacidad de reanudar descargas interrumpidas
+- Sistema de cola de descargas con límites de concurrencia configurables
+- Seguimiento de progreso en tiempo real con cálculos de velocidad y ETA
+- Persistencia de estado a través de reinicios de aplicación
+
+**Organización de Archivos**
+- `static/` - Descargas MP4 finales (excluido de git)
+- `temp_segments/` - Segmentos TS temporales durante descarga (excluido de git)
+- `download_state.json` - Estado persistente de descarga (excluido de git)
+
+### Gestión de Estado
+
+La aplicación mantiene el estado de descarga en `download_state.json` con la siguiente estructura:
+- `multi_progress`: Descargas activas/completadas con información de progreso
+- `download_queue`: Descargas en cola esperando para iniciar
+- `queue_running`: Estado del procesador de cola
+
+Las descargas interrumpidas por reinicio de aplicación se marcan automáticamente como "pausadas" y pueden reanudarse.
+
+### Constantes de Configuración
+
+Configuración clave en `app.py`:
+- `MAX_CONCURRENT_DOWNLOADS = 5` - Máximo de descargas simultáneas
+- `DEFAULT_QUALITY = 'best'` - Selección de calidad para descargas
+- Cantidad de workers configurable por descarga (defecto 30, máximo 1000)
 
 ### Consideraciones de Seguridad
+
 - Validación de entrada para URLs M3U8 y nombres de archivo
 - Protección contra path traversal para operaciones de archivo
 - Sanitización segura de nombres de archivo
-- Manejo seguro de archivos temporales
+- Limpieza de archivos temporales en errores
 
-## Endpoints de API
+### Endpoints de API
 
-Rutas Flask clave en `app.py`:
-- `GET /`: Sirve la interfaz web principal
-- `POST /download`: Inicia descarga M3U8
-- `GET /progress`: Retorna progreso de descarga en tiempo real
-- `POST /cancel/<download_id>`: Cancela descarga activa
-- `GET /files`: Lista archivos descargados
-- `DELETE /files/<filename>`: Elimina archivo descargado
+- `GET /` - Interfaz principal
+- `POST /download` - Iniciar nueva descarga
+- `GET /progress/<download_id>` - Obtener progreso de descarga
+- `POST /cancel/<download_id>` - Cancelar descarga activa
+- `GET /files` - Listar archivos descargados
+- `POST /delete_file` - Eliminar archivo descargado
+- `GET /download_file/<filename>` - Descargar archivo al cliente
 
-## Problemas Comunes
+### Manejo de Errores
 
-### FFmpeg No Encontrado
-Asegúrate de que FFmpeg esté instalado y accesible vía PATH. La aplicación requiere FFmpeg para unir segmentos de video.
+- Reintentos automáticos para descargas de segmentos fallidas
+- Degradación elegante cuando faltan segmentos
+- Detección y reporte de errores de FFmpeg
+- Manejo de timeouts de red con límites configurables
 
-### Alto Uso de CPU/Memoria
-La aplicación está diseñada para descargas de alto rendimiento con muchos workers concurrentes. Ajusta el parámetro `max_workers` en M3U8Downloader si es necesario.
+### Notas de Desarrollo
 
-### Videos Cifrados
-Videos con `#EXT-X-KEY` (DRM/cifrado) no son soportados y mostrarán mensajes de error apropiados.
+- No se requiere proceso de build - aplicación Flask pura en Python
+- Usa plantillas HTML incrustadas en `app.py` por simplicidad
+- Gestión de descargas thread-safe con bloqueo apropiado
+- Logging comprensivo para debugging de problemas de descarga
