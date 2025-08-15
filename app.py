@@ -888,14 +888,18 @@ default_html = '''
         .historial-item {display:grid;grid-template-columns:1fr auto;gap:.85rem;align-items:start;padding:.75rem 1rem;margin-bottom:.75rem;border-radius:14px;background:linear-gradient(145deg,rgba(255,255,255,.08),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);position:relative;}
         .historial-item:hover {background:linear-gradient(145deg,rgba(255,255,255,.12),rgba(255,255,255,.03));}
         .historial-main {min-width:0;}
-        .historial-title {display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;font-weight:600;font-size:.8rem;line-height:1.15rem;text-decoration:none;color:#fff;}
-        .historial-item.expanded .historial-title {-webkit-line-clamp:unset;}
+        .historial-title {
+            word-break: break-word;
+            font-weight: 600;
+            font-size: .8rem;
+            line-height: 1.15rem;
+            text-decoration: none;
+            color: #fff;
+        }
         .historial-meta {font-size:.68rem;opacity:.78;margin-top:.35rem;word-break:break-word;}
         .historial-meta .url-metadata {display:block;margin-top:.25rem;}
         .historial-actions {display:flex;flex-direction:column;gap:.4rem;align-items:flex-end;min-width:70px;}
         .historial-actions .btn {white-space:nowrap;padding:4px 8px;font-size:.6rem;}
-        .historial-actions .toggle-expand {background:#495065;border-color:#495065;color:#fff;}
-        .historial-actions .toggle-expand.active {background:#2f7c4d;border-color:#2f7c4d;}
         @media (max-width:600px){
             .historial-item {grid-template-columns:1fr;}
             .historial-actions {flex-direction:row;flex-wrap:wrap;justify-content:flex-start;}
@@ -1988,7 +1992,6 @@ function updateHistorial() {
             }
             html += '<button class="btn btn-outline-warning btn-sm" data-filename="' + safeName + '" onclick="renombrarArchivoFromData(this)" title="Renombrar">✏️</button>' +
                 '<button class="btn btn-outline-danger btn-sm" data-filename="' + safeName + '" onclick="eliminarArchivoFromData(this)" title="Eliminar">🗑️</button>' +
-                '<button class="btn btn-sm toggle-expand" onclick="toggleHistItem(this)" title="Expandir/contraer">↕</button>' +
                 '</div></li>';
             });
                     
@@ -2010,14 +2013,6 @@ function updateHistorial() {
         });
 }
 
-// Expandir / contraer un ítem de historial (mostrar nombre completo)
-function toggleHistItem(btn){
-    const item = btn.closest('.historial-item');
-    if(!item) return;
-    const expanded = item.classList.toggle('expanded');
-    btn.classList.toggle('active', expanded);
-    btn.textContent = expanded ? '⇡' : '↕';
-}
 
 // Función para extraer y mostrar metadatos M3U8
 function extractMetadata() {

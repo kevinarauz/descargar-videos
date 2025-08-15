@@ -47,7 +47,7 @@ Verificar instalación: `ffmpeg -version`
 - Historial de descargas con gestión completa de archivos
 - Selector de modo de velocidad Normal/Turbo en la interfaz
 - Sistema de notificaciones mejoradas con soporte multilinea
-- Funcionalidades de archivo: renombrar, eliminar, expandir/contraer
+- Funcionalidades de archivo: renombrar, eliminar, copiar URL, reproducir
 
 ### Características Principales
 
