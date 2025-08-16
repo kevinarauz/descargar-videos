@@ -4,7 +4,9 @@ import re
 import os
 import glob
 import time
+import logging
 from datetime import datetime
+from subprocess import run as subprocess_run, CalledProcessError
 from flask import Flask, render_template_string, request, send_file, jsonify
 from m3u8_downloader import M3U8Downloader
 
@@ -29,6 +31,11 @@ ENABLE_DETAILED_LOGGING = True  # True: muestra más información durante descar
 MAX_CONCURRENT_DOWNLOADS = 5
 DEFAULT_QUALITY = 'best'  # best, 1080p, 720p, 480p
 
+# Configuración de logging
+ENABLE_FILE_LOGGING = True  # True: guarda logs en archivos TXT
+LOG_DIRECTORY = 'logs'  # Directorio para archivos de log
+LOG_RETENTION_DAYS = 7  # Días que se mantienen los logs
+
 # ============================================================================
 
 # Configuración de la aplicación
@@ -46,35 +53,100 @@ current_speed_mode = DEFAULT_SPEED_MODE  # Variable global para el modo de veloc
 STATIC_DIR = 'static'
 TEMP_DIR = 'temp_segments'
 
+# ============================================================================
+# SISTEMA DE LOGGING A ARCHIVOS
+# ============================================================================
+
+def setup_file_logging():
+    """Configura el sistema de logging a archivos"""
+    if not ENABLE_FILE_LOGGING:
+        return
+    
+    # Crear directorio de logs si no existe
+    os.makedirs(LOG_DIRECTORY, exist_ok=True)
+    
+    # Configurar logging para aplicación principal
+    log_filename = os.path.join(LOG_DIRECTORY, f"m3u8_downloader_{datetime.now().strftime('%Y%m%d')}.log")
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_filename, encoding='utf-8'),
+            logging.StreamHandler()  # También mostrar en consola
+        ]
+    )
+    
+    # Limpiar logs antiguos
+    cleanup_old_logs()
+
+def cleanup_old_logs():
+    """Elimina logs antiguos basado en LOG_RETENTION_DAYS"""
+    if not os.path.exists(LOG_DIRECTORY):
+        return
+    
+    cutoff_time = time.time() - (LOG_RETENTION_DAYS * 24 * 60 * 60)
+    
+    for filename in os.listdir(LOG_DIRECTORY):
+        if filename.endswith('.log'):
+            filepath = os.path.join(LOG_DIRECTORY, filename)
+            if os.path.getmtime(filepath) < cutoff_time:
+                try:
+                    os.remove(filepath)
+                    print(f"🗑️ Log eliminado: {filename}")
+                except OSError as e:
+                    print(f"Error eliminando log {filename}: {e}")
+
+def log_to_file(message, level="INFO", download_id=None):
+    """Función auxiliar para logging a archivos"""
+    if not ENABLE_FILE_LOGGING:
+        return
+    
+    # Log general
+    if level == "ERROR":
+        logging.error(message)
+    elif level == "WARNING":
+        logging.warning(message)
+    else:
+        logging.info(message)
+    
+    # Log específico de descarga si se proporciona download_id
+    if download_id:
+        download_log_file = os.path.join(LOG_DIRECTORY, f"download_{download_id}.log")
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(download_log_file, 'a', encoding='utf-8') as f:
+            f.write(f"[{timestamp}] {level}: {message}\n")
+
 # Funciones de logging mejorado
-def log_info(message):
+def log_info(message, download_id=None):
     """Log información si el logging detallado está habilitado"""
     if ENABLE_DETAILED_LOGGING:
         timestamp = datetime.now().strftime('%H:%M:%S')
         print(f"[{timestamp}] {message}")
+    log_to_file(message, "INFO", download_id)
 
-def log_download_start(url, filename, mode):
+def log_download_start(url, filename, mode, download_id=None):
     """Log inicio de descarga"""
     workers = MAX_WORKERS_TURBO if mode == 'turbo' else MAX_WORKERS_NORMAL
-    log_info(f"🚀 Iniciando descarga en modo {mode.upper()} ({workers} workers)")
-    log_info(f"📁 Archivo: {filename}")
-    log_info(f"🔗 URL: {url[:60]}{'...' if len(url) > 60 else ''}")
+    log_info(f"🚀 Iniciando descarga en modo {mode.upper()} ({workers} workers)", download_id)
+    log_info(f"📁 Archivo: {filename}", download_id)
+    log_info(f"🔗 URL: {url[:60]}{'...' if len(url) > 60 else ''}", download_id)
 
-def log_download_progress(filename, percentage):
+def log_download_progress(filename, percentage, download_id=None):
     """Log progreso cada 25%"""
     if percentage in [25, 50, 75]:
-        log_info(f"📊 {filename}: {percentage}% completado")
+        log_info(f"📊 {filename}: {percentage}% completado", download_id)
 
-def log_download_complete(filename, duration, speed_mbps=None):
+def log_download_complete(filename, duration, speed_mbps=None, download_id=None):
     """Log finalización de descarga"""
-    log_info(f"✅ Completado: {filename}")
-    log_info(f"⏱️ Tiempo total: {duration}")
+    log_info(f"✅ Completado: {filename}", download_id)
+    log_info(f"⏱️ Tiempo total: {duration}", download_id)
     if speed_mbps:
-        log_info(f"⚡ Velocidad promedio: {speed_mbps:.1f} MB/s")
+        log_info(f"⚡ Velocidad promedio: {speed_mbps:.1f} MB/s", download_id)
 
-def log_download_error(filename, error):
+def log_download_error(filename, error, download_id=None):
     """Log errores de descarga"""
-    log_info(f"❌ Error en {filename}: {str(error)}")
+    log_to_file(f"❌ Error en {filename}: {str(error)}", "ERROR", download_id)
 
 # Funciones para organización por fecha
 def get_organized_path(filename):
@@ -143,7 +215,7 @@ default_html = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Descargador M3U8 Mejorado</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23667eea'/><stop offset='100%25' stop-color='%23764ba2'/></linearGradient></defs><rect width='32' height='32' rx='6' fill='url(%23bg)'/><rect x='6' y='9' width='20' height='14' rx='2' fill='white' fill-opacity='0.95'/><rect x='7.5' y='10.5' width='17' height='11' rx='1' fill='%23212529'/><polygon points='12.5,14.5 18,17 12.5,19.5' fill='%23667eea'/><circle cx='24' cy='24' r='6' fill='%2328a745'/><path d='M21,24 L23,26 L27,22' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' fill='none'/></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='bg' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='%23667eea'/><stop offset='100%' stop-color='%23764ba2'/></linearGradient></defs><rect width='32' height='32' rx='6' fill='url(%23bg)'/><rect x='6' y='9' width='20' height='14' rx='2' fill='white' fill-opacity='0.95'/><rect x='7.5' y='10.5' width='17' height='11' rx='1' fill='%23212529'/><polygon points='12.5,14.5 18,17 12.5,19.5' fill='%23667eea'/><circle cx='24' cy='24' r='6' fill='%2328a745'/><path d='M21,24 L23,26 L27,22' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' fill='none'/></svg>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         /* Variables CSS para consistencia */
@@ -1117,14 +1189,17 @@ default_html = '''
             </div>
           </div>
           <div class="d-flex gap-3 flex-wrap">
-            <button type="button" class="btn btn-info d-flex align-items-center gap-2" onclick="playM3U8()">
+            <button type="button" id="play-m3u8-btn" class="btn btn-info d-flex align-items-center gap-2">
               <span>▶️</span> Vista Previa
             </button>
-            <button type="button" class="btn btn-secondary d-flex align-items-center gap-2" onclick="extractMetadata()">
+            <button type="button" id="extract-metadata-btn" class="btn btn-secondary d-flex align-items-center gap-2">
               <span>🔍</span> Analizar M3U8
             </button>
             <button type="submit" class="btn btn-success d-flex align-items-center gap-2">
               <span>⬇️</span> Descargar MP4
+            </button>
+            <button type="button" class="btn btn-info d-flex align-items-center gap-2" onclick="playOnlyM3U8()" title="Reproducir sin descargar (útil para contenido encriptado)">
+              <span>👀</span> Solo Ver
             </button>
             <button type="button" class="btn btn-outline-light d-flex align-items-center gap-2" onclick="addToQueueFromForm()">
               <span>➕</span> Añadir a Cola
@@ -1163,6 +1238,9 @@ default_html = '''
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script>
+// Configuración global
+window.DEBUG_MODE = false; // Cambiar a true para ver logs de debug
+
 // Variables globales para las nuevas funcionalidades
 let downloadQueue = [];
 let queueRunning = false;
@@ -1175,6 +1253,24 @@ let userConfig = {
 
 // Objeto para trackear descargas activas para el cálculo de velocidad promedio
 window.activeDownloads = {};
+
+// ============================================================================
+// DEFINICIONES GLOBALES ANTICIPADAS para onclick handlers
+// ============================================================================
+// Definir referencias globales para evitar "function not defined" errors
+window.toggleQueue = null;
+window.addToQueue = null;
+window.addToQueueFromForm = null;
+window.toggleSpeedMode = null;
+window.playM3U8 = null;
+window.extractMetadata = null;
+window.toggleConfig = null;
+window.updateMaxConcurrent = null;
+window.updateQuality = null;
+window.eliminarDescargaActiva = null;
+window.reproducirUrlActiva = null;
+window.reintentarDescarga = null;
+window.reanudarDescarga = null;
 
 // Cargar configuración del localStorage
 function loadUserConfig() {
@@ -1206,6 +1302,11 @@ function toggleConfig(setting) {
     updateConfigUI();
     showNotification(setting + ' ' + (userConfig[setting] ? 'activado' : 'desactivado'), 'info');
 }
+
+// Asignar funciones a referencias globales
+window.toggleConfig = toggleConfig;
+window.updateMaxConcurrent = updateMaxConcurrent;
+window.updateQuality = updateQuality;
 
 // Actualizar configuraciones
 function updateMaxConcurrent(value) {
@@ -1286,6 +1387,8 @@ async function toggleSpeedMode() {
         console.error('Error:', error);
     }
 }
+// Asignar función a referencia global
+window.toggleSpeedMode = toggleSpeedMode;
 
 // Sistema de notificaciones
 function showNotification(message, type = 'info') {
@@ -1394,6 +1497,8 @@ function reanudarDescarga(download_id) {
         });
     }
 }
+// Asignar función a referencia global
+window.reanudarDescarga = reanudarDescarga;
 
 // Función para pausar descarga
 function pausarDescarga(download_id) {
@@ -1617,6 +1722,8 @@ function addToQueue() {
         showNotification('Error: ' + error.message, 'danger');
     });
 }
+// Asignar función a referencia global
+window.addToQueue = addToQueue;
 
 function addToQueueFromForm() {
     const url = document.getElementById('m3u8-url').value.trim();
@@ -1648,6 +1755,8 @@ function addToQueueFromForm() {
         showNotification('Error: ' + error.message, 'danger');
     });
 }
+// Asignar función a referencia global
+window.addToQueueFromForm = addToQueueFromForm;
 
 function removeFromQueue(id) {
     fetch('/api/queue', {
@@ -1747,6 +1856,8 @@ function toggleQueue() {
         }
     });
 }
+// Asignar función a referencia global
+window.toggleQueue = toggleQueue;
 
 // Actualizar estadísticas del dashboard
 function updateDashboardStats() {
@@ -1807,6 +1918,24 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
+// Función para enviar errores JS al servidor
+function sendJSErrorToServer(errorInfo) {
+    try {
+        fetch('/api/log_js_error', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(errorInfo)
+        }).catch(e => {
+            // Si no se puede enviar al servidor, solo log local
+            console.debug('No se pudo enviar error al servidor:', e);
+        });
+    } catch (e) {
+        console.debug('Error al enviar JS error:', e);
+    }
+}
+
 // Manejador global de errores para filtrar errores de extensiones de Chrome
 window.addEventListener('error', function(event) {
     // Filtrar errores conocidos de extensiones de Chrome
@@ -1828,7 +1957,18 @@ window.addEventListener('error', function(event) {
         return true;
     }
     
-    // Para errores reales de nuestra aplicación, mantener el comportamiento normal
+    // Para errores reales de nuestra aplicación, enviar al servidor y mantener comportamiento normal
+    const errorInfo = {
+        message: event.message || 'Error desconocido',
+        source: event.filename || 'Desconocido',
+        line: event.lineno || 'N/A',
+        column: event.colno || 'N/A',
+        stack: event.error ? event.error.stack : ''
+    };
+    
+    // Enviar error al servidor para logging
+    sendJSErrorToServer(errorInfo);
+    
     return false;
 });
 
@@ -1842,6 +1982,18 @@ console.error = function(...args) {
         // Silenciar estos errores específicos
         return;
     }
+    
+    // Enviar errores de consola al servidor para logging
+    const errorInfo = {
+        message: message,
+        source: 'console.error',
+        line: 'N/A',
+        column: 'N/A',
+        stack: new Error().stack || ''
+    };
+    sendJSErrorToServer(errorInfo);
+    
+    // Mostrar error en consola normalmente
     originalConsoleError.apply(console, args);
 };
 
@@ -1856,7 +2008,8 @@ function cleanupDuplicateDownloads() {
         if (seenIds.has(downloadId)) {
             // Es un duplicado, marcarlo para eliminación
             elementsToRemove.push(el);
-            console.log('Encontrado duplicado, marcando para eliminación:', downloadId);
+            // Solo log en modo debug
+            if (window.DEBUG_MODE) console.log('Encontrado duplicado, marcando para eliminación:', downloadId);
         } else {
             seenIds.add(downloadId);
         }
@@ -1864,11 +2017,11 @@ function cleanupDuplicateDownloads() {
     
     // Eliminar duplicados
     elementsToRemove.forEach(el => {
-        console.log('Eliminando elemento duplicado:', el.dataset.downloadId);
+        if (window.DEBUG_MODE) console.log('Eliminando elemento duplicado:', el.dataset.downloadId);
         el.remove();
     });
     
-    if (elementsToRemove.length > 0) {
+    if (elementsToRemove.length > 0 && window.DEBUG_MODE) {
         console.log(`Limpiados ${elementsToRemove.length} duplicados`);
     }
 }
@@ -1936,8 +2089,12 @@ function loadActiveDownloads() {
                             console.log('Creando nueva descarga activa:', download_id);
                             mostrarDescargaActiva(download_id, download.url);
                         } else {
-                            // Ya existe, solo actualizar si es necesario
-                            console.log('Descarga ya existe, saltando:', download_id);
+                            // Ya existe, verificar si necesita actualización
+                            const existingElement = existingElements.get(download_id);
+                            if (existingElement) {
+                                // Actualizar estado si es necesario
+                                console.log('Actualizando descarga existente:', download_id, 'Status:', download.status);
+                            }
                         }
                     }
                 });
@@ -2085,6 +2242,8 @@ function extractMetadata() {
         `;
     });
 }
+// Asignar función a referencia global
+window.extractMetadata = extractMetadata;
 
 function displayMetadata(metadata, suggestedName) {
     const metadataContent = document.getElementById('metadata-content');
@@ -2245,6 +2404,168 @@ function playM3U8() {
         container.innerHTML = '<p>Tu navegador no soporta reproducción M3U8.</p>';
     }
 }
+// Asignar función a referencia global
+window.playM3U8 = playM3U8;
+
+// Función para reproducir M3U8 sin descargar (útil para contenido encriptado)
+function playOnlyM3U8() {
+    const url = document.getElementById('m3u8-url').value.trim();
+    if (!url) {
+        showNotification('Introduce una URL M3U8 válida', 'warning');
+        return;
+    }
+    
+    // Crear una nueva ventana para el reproductor
+    const popup = window.open('', '_blank', 'width=800,height=600,scrollbars=yes');
+    
+    if (!popup) {
+        showNotification('No se pudo abrir ventana emergente. Verifica el bloqueador de ventanas emergentes.', 'danger');
+        return;
+    }
+    
+    // Escapar la URL para uso seguro en JavaScript
+    const escapedUrl = url.replace(/"/g, '\\"');
+    
+    // Usar array join para construir HTML limpiamente
+    const htmlContent = [
+        '<!DOCTYPE html>',
+        '<html lang="es">',
+        '<head>',
+        '  <meta charset="UTF-8">',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+        '  <title>Reproductor M3U8 - Solo Ver</title>',
+        '  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"><' + '/script>',
+        '  <style>',
+        '    body { margin: 0; padding: 20px; background: #1a1a1a; color: white; font-family: Arial, sans-serif; }',
+        '    .header { text-align: center; margin-bottom: 20px; padding: 10px; background: #333; border-radius: 8px; }',
+        '    .video-container { text-align: center; background: #000; border-radius: 8px; padding: 10px; }',
+        '    video { width: 100%; max-width: 800px; height: auto; border-radius: 4px; }',
+        '    .info { margin-top: 15px; padding: 15px; background: #2a2a2a; border-radius: 8px; font-size: 14px; }',
+        '    .status { margin-top: 10px; padding: 10px; border-radius: 4px; }',
+        '    .status.loading { background: #1e40af; color: white; }',
+        '    .status.success { background: #16a34a; color: white; }',
+        '    .status.error { background: #dc2626; color: white; }',
+        '  </style>',
+        '</head>',
+        '<body>',
+        '  <div class="header">',
+        '    <h2>👀 Modo Solo Ver - Reproductor M3U8</h2>',
+        '    <p>Perfecto para contenido encriptado/DRM que no se puede descargar</p>',
+        '  </div>',
+        '  <div class="video-container">',
+        '    <video id="video" controls autoplay></video>',
+        '    <div id="status" class="status loading">🔄 Cargando video M3U8...</div>',
+        '  </div>',
+        '  <div class="info">',
+        '    <strong>🔗 URL:</strong> <span style="word-break: break-all;">' + url + '</span><br>',
+        '    <strong>📺 Modo:</strong> Solo reproducción (sin descarga)<br>',
+        '    <strong>🔐 Compatibilidad:</strong> Funciona con contenido encriptado que el navegador puede reproducir',
+        '  </div>',
+        '  <script>',
+        '    const video = document.getElementById("video");',
+        '    const status = document.getElementById("status");',
+        '    const targetUrl = "' + escapedUrl + '";',
+        '    ',
+        '    function updateStatus(message, type) {',
+        '      type = type || "loading";',
+        '      status.textContent = message;',
+        '      status.className = "status " + type;',
+        '    }',
+        '    ',
+        '    function initPlayer() {',
+        '      updateStatus("🔄 Inicializando reproductor HLS.js...", "loading");',
+        '      ',
+        '      if (typeof Hls !== "undefined" && Hls.isSupported()) {',
+        '        const hls = new Hls({',
+        '          debug: false,',
+        '          enableWorker: true,',
+        '          lowLatencyMode: true,',
+        '          backBufferLength: 90',
+        '        });',
+        '        ',
+        '        hls.loadSource(targetUrl);',
+        '        hls.attachMedia(video);',
+        '        ',
+        '        hls.on(Hls.Events.MANIFEST_PARSED, function() {',
+        '          updateStatus("✅ Video cargado correctamente - Reproduciendo...", "success");',
+        '          video.play().catch(function(e) {',
+        '            updateStatus("⚠️ Video cargado - Haz clic en play para reproducir", "success");',
+        '          });',
+        '        });',
+        '        ',
+        '        hls.on(Hls.Events.ERROR, function(event, data) {',
+        '          console.error("HLS Error:", data);',
+        '          if (data.fatal) {',
+        '            switch(data.type) {',
+        '              case Hls.ErrorTypes.NETWORK_ERROR:',
+        '                updateStatus("❌ Error de red: No se puede acceder al video", "error");',
+        '                break;',
+        '              case Hls.ErrorTypes.MEDIA_ERROR:',
+        '                updateStatus("❌ Error de medios: Problema con el formato del video", "error");',
+        '                break;',
+        '              default:',
+        '                updateStatus("❌ Error fatal: " + data.type, "error");',
+        '                break;',
+        '            }',
+        '          }',
+        '        });',
+        '        ',
+        '        video.addEventListener("loadstart", function() {',
+        '          updateStatus("🔄 Iniciando carga...", "loading");',
+        '        });',
+        '        ',
+        '        video.addEventListener("canplay", function() {',
+        '          updateStatus("✅ Video listo para reproducir", "success");',
+        '        });',
+        '        ',
+        '        video.addEventListener("playing", function() {',
+        '          updateStatus("▶️ Reproduciendo...", "success");',
+        '        });',
+        '        ',
+        '        video.addEventListener("pause", function() {',
+        '          updateStatus("⏸️ Pausado", "success");',
+        '        });',
+        '        ',
+        '        video.addEventListener("error", function() {',
+        '          updateStatus("❌ Error al cargar el video", "error");',
+        '        });',
+        '        ',
+        '      } else if (video.canPlayType && video.canPlayType("application/vnd.apple.mpegurl")) {',
+        '        updateStatus("🍎 Usando reproductor nativo de Safari...", "loading");',
+        '        video.src = targetUrl;',
+        '        ',
+        '        video.addEventListener("canplay", function() {',
+        '          updateStatus("✅ Video cargado - Reproduciendo...", "success");',
+        '          video.play().catch(function(e) {',
+        '            updateStatus("⚠️ Video cargado - Haz clic en play para reproducir", "success");',
+        '          });',
+        '        });',
+        '        ',
+        '        video.addEventListener("error", function() {',
+        '          updateStatus("❌ Error al cargar el video M3U8", "error");',
+        '        });',
+        '      } else {',
+        '        updateStatus("❌ Tu navegador no soporta reproducción M3U8", "error");',
+        '      }',
+        '    }',
+        '    ',
+        '    if (document.readyState === "loading") {',
+        '      document.addEventListener("DOMContentLoaded", initPlayer);',
+        '    } else {',
+        '      initPlayer();',
+        '    }',
+        '  <' + '/script>',
+        '</body>',
+        '</html>'
+    ].join('\\n');
+    
+    popup.document.write(htmlContent);
+    popup.document.close();
+    
+    showNotification('Reproductor M3U8 abierto en nueva ventana', 'success');
+}
+// Asignar función a referencia global
+window.playOnlyM3U8 = playOnlyM3U8;
 
 document.getElementById('descargar-form').addEventListener('submit', function(e) {
     e.preventDefault();
@@ -2273,7 +2594,7 @@ function mostrarDescargaActiva(download_id, url) {
     // Verificar si ya existe un elemento para esta descarga
     const existingElement = document.getElementById('descarga-' + download_id);
     if (existingElement) {
-        console.log('Elemento de descarga ya existe, no creando duplicado:', download_id);
+        if (window.DEBUG_MODE) console.log('Elemento de descarga ya existe, no creando duplicado:', download_id);
         return; // No crear duplicado
     }
     
@@ -2332,7 +2653,8 @@ function mostrarDescargaActiva(download_id, url) {
     playBtn.id = 'play-btn-' + download_id;
     playBtn.innerHTML = '▶️';
     playBtn.title = 'Reproducir video mientras se descarga';
-    playBtn.onclick = function() { reproducirUrlActiva(download_id); };
+    playBtn.setAttribute('data-download-id', download_id);
+    playBtn.setAttribute('data-action', 'reproducir-url-activa');
     
     // Botón pausar descarga
     const pauseBtn = document.createElement('button');
@@ -2633,13 +2955,23 @@ function actualizarProgreso(download_id) {
             }
             let descargaElement = document.getElementById('descarga-' + download_id);
             if (descargaElement) {
-                descargaElement.innerHTML += 
+                const downloadLinkHtml = 
                     '<div class="mt-2">' +
                         '<a href="/static/' + data.output_file + '" download class="btn btn-primary btn-sm me-2">Descargar MP4</a>' +
-                        '<button class="btn btn-outline-secondary btn-sm" onclick="eliminarDescargaActiva(\\"' + download_id + '\\")" title="Eliminar de la lista">' +
+                        '<button class="btn btn-outline-secondary btn-sm" id="remove-completed-btn-' + download_id + '" title="Eliminar de la lista">' +
                             'Quitar' +
                         '</button>' +
                     '</div>';
+                
+                descargaElement.innerHTML += downloadLinkHtml;
+                
+                // Asignar event listener después de agregar el HTML
+                setTimeout(() => {
+                    const removeBtn = document.getElementById('remove-completed-btn-' + download_id);
+                    if (removeBtn) {
+                        removeBtn.onclick = function() { eliminarDescargaActiva(download_id); };
+                    }
+                }, 10);
             }
             
             // Mostrar notificación solo una vez con información mejorada
@@ -2682,23 +3014,23 @@ function actualizarProgreso(download_id) {
                     '<strong>URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>' +
                 '</div>' +
                 '<div class="mt-2">' +
-                    '<button class="btn btn-warning btn-sm me-2" onclick="reintentarDescarga(\\"' + download_id + '\\")" title="Reintentar descarga">' +
+                    '<button class="btn btn-warning btn-sm me-2" id="retry-btn-' + download_id + '" title="Reintentar descarga">' +
                         'Reintentar' +
                     '</button>';
             
             // Añadir botón de reanudar si es posible
             if (data.can_resume) {
                 buttonsHtml += 
-                    '<button class="btn btn-info btn-sm me-2" onclick="reanudarDescarga(\\"' + download_id + '\\")" title="Reanudar descarga">' +
+                    '<button class="btn btn-info btn-sm me-2" id="resume-btn-' + download_id + '" title="Reanudar descarga">' +
                         'Continuar' +
                     '</button>';
             }
             
             buttonsHtml += 
-                    '<button class="btn btn-success btn-sm me-2" onclick="reproducirUrlActiva(\\"' + download_id + '\\")" title="Reproducir video">' +
+                    '<button class="btn btn-success btn-sm me-2" id="play-error-btn-' + download_id + '" title="Reproducir video">' +
                         'Reproducir' +
                     '</button>' +
-                    '<button class="btn btn-outline-secondary btn-sm" onclick="eliminarDescargaActiva(\\"' + download_id + '\\")" title="Eliminar de la lista">' +
+                    '<button class="btn btn-outline-secondary btn-sm" id="remove-error-btn-' + download_id + '" title="Eliminar de la lista">' +
                         'Quitar' +
                     '</button>' +
                 '</div>';
@@ -2706,6 +3038,30 @@ function actualizarProgreso(download_id) {
             let descargaElement = document.getElementById('descarga-' + download_id);
             if (descargaElement) {
                 descargaElement.innerHTML += buttonsHtml;
+                
+                // Asignar event listeners después de agregar el HTML
+                setTimeout(() => {
+                    const retryBtn = document.getElementById('retry-btn-' + download_id);
+                    const resumeBtn = document.getElementById('resume-btn-' + download_id);
+                    const playBtn = document.getElementById('play-error-btn-' + download_id);
+                    const removeBtn = document.getElementById('remove-error-btn-' + download_id);
+                    
+                    if (retryBtn) {
+                        retryBtn.setAttribute('data-download-id', download_id);
+                retryBtn.setAttribute('data-action', 'reintentar-descarga');
+                    }
+                    if (resumeBtn) {
+                        resumeBtn.setAttribute('data-download-id', download_id);
+                resumeBtn.setAttribute('data-action', 'reanudar-descarga');
+                    }
+                    if (playBtn) {
+                        playBtn.setAttribute('data-download-id', download_id);
+    playBtn.setAttribute('data-action', 'reproducir-url-activa');
+                    }
+                    if (removeBtn) {
+                        removeBtn.onclick = function() { eliminarDescargaActiva(download_id); };
+                    }
+                }, 10);
             }
             
             // Mostrar notificación solo una vez
@@ -2760,7 +3116,8 @@ function actualizarProgreso(download_id) {
                 retryBtn.className = 'btn btn-warning btn-sm me-2';
                 retryBtn.innerHTML = '🔄 Reintentar';
                 retryBtn.title = 'Reintentar descarga';
-                retryBtn.onclick = function() { reintentarDescarga(download_id); };
+                retryBtn.setAttribute('data-download-id', download_id);
+                retryBtn.setAttribute('data-action', 'reintentar-descarga');
                 buttonContainer.appendChild(retryBtn);
                 
                 // Botón Continuar (si es posible)
@@ -2769,7 +3126,8 @@ function actualizarProgreso(download_id) {
                     continueBtn.className = 'btn btn-info btn-sm me-2';
                     continueBtn.innerHTML = '▶️ Continuar';
                     continueBtn.title = 'Reanudar descarga';
-                    continueBtn.onclick = function() { reanudarDescarga(download_id); };
+                    continueBtn.setAttribute('data-download-id', download_id);
+                continueBtn.setAttribute('data-action', 'reanudar-descarga');
                     buttonContainer.appendChild(continueBtn);
                 }
                 
@@ -2778,7 +3136,8 @@ function actualizarProgreso(download_id) {
                 playBtnCancelled.className = 'btn btn-success btn-sm me-2';
                 playBtnCancelled.textContent = 'Reproducir';
                 playBtnCancelled.title = 'Reproducir video';
-                playBtnCancelled.onclick = function() { reproducirUrlActiva(download_id); };
+                playBtnCancelled.setAttribute('data-download-id', download_id);
+                playBtnCancelled.setAttribute('data-action', 'reproducir-url-activa');
                 buttonContainer.appendChild(playBtnCancelled);
                 
                 // Botón Quitar
@@ -2840,14 +3199,16 @@ function actualizarProgreso(download_id) {
                 continueBtn.className = 'btn btn-info btn-sm me-2';
                 continueBtn.textContent = 'Continuar';
                 continueBtn.title = 'Continuar descarga';
-                continueBtn.onclick = function() { reanudarDescarga(download_id); };
+                continueBtn.setAttribute('data-download-id', download_id);
+                continueBtn.setAttribute('data-action', 'reanudar-descarga');
                 
                 // Botón Reproducir
                 const playBtnPaused = document.createElement('button');
                 playBtnPaused.className = 'btn btn-success btn-sm me-2';
                 playBtnPaused.textContent = 'Reproducir';
                 playBtnPaused.title = 'Reproducir video';
-                playBtnPaused.onclick = function() { reproducirUrlActiva(download_id); };
+                playBtnPaused.setAttribute('data-download-id', download_id);
+                playBtnPaused.setAttribute('data-action', 'reproducir-url-activa');
                 
                 // Botón Quitar
                 const removeBtn = document.createElement('button');
@@ -2937,16 +3298,26 @@ function eliminarDescargaActiva(download_id) {
         });
     }
 }
+// Asignar función a referencia global
+window.eliminarDescargaActiva = eliminarDescargaActiva;
 
 function reintentarDescarga(download_id) {
+    console.log('Iniciando reintento de descarga:', download_id);
     fetch('/progreso/' + download_id).then(r => r.json()).then(data => {
+        console.log('Datos de descarga obtenidos:', data);
         if (data.url && data.output_file) {
             if (confirm('¿Reintentar la descarga de "' + data.output_file + '"?')) {
                 document.getElementById('m3u8-url').value = data.url;
                 document.getElementById('output-name').value = data.output_file.replace('.mp4', '');
                 
+                console.log('Eliminando descarga anterior:', download_id);
                 fetch('/eliminar_descarga/' + download_id, {
                     method: 'DELETE'
+                }).then(deleteResponse => {
+                    console.log('Respuesta de eliminación:', deleteResponse.status);
+                    return deleteResponse.json();
+                }).then(deleteData => {
+                    console.log('Eliminación completada:', deleteData);
                 }).then(() => {
                     let elemento = document.getElementById('descarga-' + download_id);
                     if (elemento) {
@@ -2957,17 +3328,25 @@ function reintentarDescarga(download_id) {
                     let outputName = data.output_file.replace('.mp4', '');
                     if (outputName) params += '&output_name=' + encodeURIComponent(outputName);
                     
+                    console.log('Iniciando nueva descarga con parámetros:', params);
                     fetch('/descargar', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: params
-                    }).then(r => r.json()).then(newData => {
+                    }).then(r => {
+                        console.log('Respuesta de nueva descarga:', r.status);
+                        return r.json();
+                    }).then(newData => {
+                        console.log('Datos de nueva descarga:', newData);
                         if (newData.download_id) {
+                            console.log('Nueva descarga creada exitosamente:', newData.download_id);
                             mostrarDescargaActiva(newData.download_id, data.url);
                         } else if (newData.error) {
+                            console.error('Error en nueva descarga:', newData.error);
                             alert('Error al reintentar: ' + newData.error);
                         }
                     }).catch(error => {
+                        console.error('Error completo al reintentar:', error);
                         alert('Error al reintentar: ' + error.message);
                     });
                 });
@@ -2979,6 +3358,8 @@ function reintentarDescarga(download_id) {
         alert('Error al obtener datos de la descarga: ' + error.message);
     });
 }
+// Asignar función a referencia global
+window.reintentarDescarga = reintentarDescarga;
 
 function copiarUrl(url) {
     let urlToCopy = decodeURIComponent(url);
@@ -3061,33 +3442,7 @@ function reproducirUrlFromData(button) {
     }, 2000);
 }
 
-function reproducirUrlActiva(download_id) {
-    const playButton = document.getElementById('play-btn-' + download_id);
-    
-    fetch('/progreso/' + download_id).then(r => r.json()).then(data => {
-        if (data.url) {
-            document.getElementById('m3u8-url').value = data.url;
-            
-            playM3U8();
-            
-            if (playButton) {
-                let originalText = playButton.innerHTML;
-                playButton.innerHTML = '🎬 Reproduciendo...';
-                playButton.disabled = true;
-                setTimeout(function() {
-                    playButton.innerHTML = originalText;
-                    playButton.disabled = false;
-                }, 3000);
-            }
-            
-            showNotification('Reproduciendo video en el reproductor', 'info');
-        } else {
-            showNotification('No se pudo obtener la URL para reproducir', 'warning');
-        }
-    }).catch(error => {
-        showNotification('Error al obtener la URL: ' + error.message, 'danger');
-    });
-}
+// Función eliminada - reemplazada por handleReproducirUrlActiva en event delegation
 
 function copiarUrlFallback(url) {
     let urlToCopy = typeof url === 'string' ? decodeURIComponent(url) : url;
@@ -3110,13 +3465,293 @@ function copiarUrlFallback(url) {
 }
 
 // ============================================================================
+// NOTA: Las funciones se asignan a window justo después de su definición
+// ============================================================================
+
+// ============================================================================
 // INICIALIZACIÓN
 // ============================================================================
+
+// ============================================================================
+// ASIGNACIONES GLOBALES DE FUNCIONES - DEBE ESTAR ANTES DE EVENT DELEGATION
+// ============================================================================
+
+// Asegurar que todas las funciones críticas estén disponibles globalmente
+function ensureGlobalFunctions() {
+    // Funciones de descarga
+    if (typeof reintentarDescarga === 'function') {
+        window.reintentarDescarga = reintentarDescarga;
+    }
+    if (typeof reanudarDescarga === 'function') {
+        window.reanudarDescarga = reanudarDescarga;
+    }
+    if (typeof reproducirUrlActiva === 'function') {
+        window.reproducirUrlActiva = reproducirUrlActiva;
+    }
+    if (typeof eliminarDescargaActiva === 'function') {
+        window.eliminarDescargaActiva = eliminarDescargaActiva;
+    }
+    
+    // Funciones de interfaz
+    if (typeof extractMetadata === 'function') {
+        window.extractMetadata = extractMetadata;
+    }
+    if (typeof playM3U8 === 'function') {
+        window.playM3U8 = playM3U8;
+    }
+    if (typeof toggleSpeedMode === 'function') {
+        window.toggleSpeedMode = toggleSpeedMode;
+    }
+    if (typeof toggleQueue === 'function') {
+        window.toggleQueue = toggleQueue;
+    }
+    if (typeof addToQueue === 'function') {
+        window.addToQueue = addToQueue;
+    }
+    if (typeof addToQueueFromForm === 'function') {
+        window.addToQueueFromForm = addToQueueFromForm;
+    }
+}
+
+// Ejecutar asignaciones inmediatamente
+ensureGlobalFunctions();
 
 // Inicializar cuando se carga la página
 document.addEventListener('DOMContentLoaded', function() {
     loadUserConfig();
     loadSpeedMode();
+    
+    // Volver a asegurar las funciones están disponibles
+    ensureGlobalFunctions();
+    
+    // Diagnóstico de funciones disponibles
+    console.log('🔍 Diagnóstico de funciones al inicializar:');
+    const criticalFunctions = [
+        'reintentarDescarga', 'reanudarDescarga', 'reproducirUrlActiva',
+        'eliminarDescargaActiva', 'extractMetadata', 'playM3U8'
+    ];
+    
+    criticalFunctions.forEach(funcName => {
+        const localAvailable = typeof window[funcName] === 'function';
+        const globalAvailable = typeof eval(funcName) === 'function';
+        console.log(`${funcName}: window.${funcName}=${localAvailable ? '✅' : '❌'}, ${funcName}=${globalAvailable ? '✅' : '❌'}`);
+    });
+    
+    // Funciones helper para event delegation
+    function handleReintentarDescarga(downloadId) {
+        fetch('/eliminar_descarga/' + downloadId, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        }).then(response => response.json()).then(data => {
+            if (data.success) {
+                console.log('✅ Descarga anterior eliminada, creando nueva...');
+                // Obtener datos de la descarga eliminada del servidor
+                fetch('/api/active_downloads')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.downloads[downloadId]) {
+                            const downloadData = data.downloads[downloadId];
+                            console.log('Datos de descarga obtenidos:', downloadData);
+                            
+                            // Crear nueva descarga usando form data
+                            const formData = new FormData();
+                            formData.append('m3u8_url', downloadData.url);
+                            formData.append('output_name', downloadData.output_file.replace('.mp4', ''));
+                            formData.append('quality', downloadData.quality || 'best');
+                            
+                            fetch('/descargar', {
+                                method: 'POST',
+                                body: formData
+                            }).then(r => r.json()).then(newData => {
+                                console.log('Nueva descarga creada:', newData);
+                                if (newData.download_id) {
+                                    console.log('✅ Reintento exitoso:', newData.download_id);
+                                    // Recargar descargas activas
+                                    loadActiveDownloads();
+                                } else {
+                                    console.error('❌ Error en reintento:', newData.error);
+                                    alert('Error al reintentar: ' + (newData.error || 'Error desconocido'));
+                                }
+                            }).catch(error => {
+                                console.error('❌ Error completo al reintentar:', error);
+                                alert('Error al reintentar: ' + error.message);
+                            });
+                        } else {
+                            alert('No se pudieron obtener los datos de la descarga para reintentar.');
+                        }
+                    }).catch(error => {
+                        alert('Error al obtener datos de la descarga: ' + error.message);
+                    });
+            } else {
+                console.error('❌ Error eliminando descarga:', data.error);
+            }
+        }).catch(error => {
+            console.error('❌ Error en handleReintentarDescarga:', error);
+        });
+    }
+
+    function handleReanudarDescarga(downloadId) {
+        fetch('/reanudar/' + downloadId, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        }).then(response => response.json()).then(data => {
+            if (data.success) {
+                console.log('✅ Descarga reanudada exitosamente');
+                // Recargar descargas activas
+                loadActiveDownloads();
+            } else {
+                console.error('❌ Error reanudando:', data.error);
+                alert('Error al reanudar: ' + data.error);
+            }
+        }).catch(error => {
+            console.error('❌ Error en handleReanudarDescarga:', error);
+            alert('Error al reanudar: ' + error.message);
+        });
+    }
+
+    function handleReproducirUrlActiva(downloadId) {
+        fetch('/api/active_downloads')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.downloads[downloadId]) {
+                    const downloadData = data.downloads[downloadId];
+                    const m3u8Url = downloadData.url;
+                    
+                    console.log('🎥 Reproduciendo URL:', m3u8Url);
+                    
+                    // Abrir reproductor en nueva ventana
+                    const playerWindow = window.open('', '_blank', 'width=800,height=600');
+                    
+                    // Crear el HTML completo del reproductor usando innerHTML
+                    const safeUrl = m3u8Url.replace(/'/g, "\\\\'").replace(/"/g, '\\\\"');
+                    const htmlContent = [
+                        '<!DOCTYPE html>',
+                        '<html>',
+                        '<head>',
+                        '  <title>Reproductor M3U8</title>',
+                        '  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"><' + '/script>',
+                        '</head>',
+                        '<body style="margin: 0; background: black;">',
+                        '  <video id="video" controls style="width: 100%; height: 100vh;" autoplay></video>',
+                        '  <script>',
+                        '    const video = document.getElementById("video");',
+                        '    const m3u8Url = "' + safeUrl + '";',
+                        '    console.log("Cargando URL:", m3u8Url);',
+                        '    if (typeof Hls !== "undefined" && Hls.isSupported()) {',
+                        '      const hls = new Hls();',
+                        '      hls.loadSource(m3u8Url);',
+                        '      hls.attachMedia(video);',
+                        '      hls.on(Hls.Events.MANIFEST_PARSED, function() {',
+                        '        video.play();',
+                        '      });',
+                        '    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {',
+                        '      video.src = m3u8Url;',
+                        '      video.play();',
+                        '    } else {',
+                        '      alert("Tu navegador no soporta HLS");',
+                        '    }',
+                        '  <' + '/script>',
+                        '</body>',
+                        '</html>'
+                    ].join('\\n');
+                    
+                    playerWindow.document.open();
+                    playerWindow.document.write(htmlContent);
+                    playerWindow.document.close();
+                } else {
+                    alert('No se pudo obtener la URL de la descarga');
+                }
+            }).catch(error => {
+                console.error('❌ Error en handleReproducirUrlActiva:', error);
+                alert('Error al reproducir: ' + error.message);
+            });
+    }
+
+    // Event delegation para botones con data-action
+    document.addEventListener('click', function(event) {
+        const action = event.target.getAttribute('data-action');
+        const downloadId = event.target.getAttribute('data-download-id');
+        
+        if (action && downloadId) {
+            event.preventDefault();
+            
+            console.log('🎯 Event delegation ejecutado:', action, downloadId);
+            
+            switch(action) {
+                case 'reintentar-descarga':
+                    console.log('🔄 Reintentando descarga:', downloadId);
+                    handleReintentarDescarga(downloadId);
+                    break;
+                    
+                case 'reanudar-descarga':
+                    console.log('▶️ Reanudando descarga:', downloadId);
+                    handleReanudarDescarga(downloadId);
+                    break;
+                    
+                case 'reproducir-url-activa':
+                    console.log('🎥 Reproduciendo URL activa:', downloadId);
+                    handleReproducirUrlActiva(downloadId);
+                    break;
+            }
+        }
+    });
+    
+    // Verificar que todas las funciones críticas estén disponibles
+    const functionsToCheck = [
+        'toggleQueue', 'addToQueue', 'addToQueueFromForm', 'toggleSpeedMode',
+        'playM3U8', 'extractMetadata', 'toggleConfig', 'updateMaxConcurrent',
+        'updateQuality', 'eliminarDescargaActiva', 'reproducirUrlActiva',
+        'reintentarDescarga', 'reanudarDescarga'
+    ];
+    
+    // Forzar asignación de funciones críticas al objeto global
+    if (typeof extractMetadata === 'function') {
+        window.extractMetadata = extractMetadata;
+    }
+    if (typeof playM3U8 === 'function') {
+        window.playM3U8 = playM3U8;
+    }
+    if (typeof reintentarDescarga === 'function') {
+        window.reintentarDescarga = reintentarDescarga;
+    }
+    if (typeof reanudarDescarga === 'function') {
+        window.reanudarDescarga = reanudarDescarga;
+    }
+    if (typeof reproducirUrlActiva === 'function') {
+        window.reproducirUrlActiva = reproducirUrlActiva;
+    }
+    if (typeof eliminarDescargaActiva === 'function') {
+        window.eliminarDescargaActiva = eliminarDescargaActiva;
+    }
+    
+    functionsToCheck.forEach(funcName => {
+        if (typeof window[funcName] !== 'function') {
+            console.warn(`Función ${funcName} no está disponible globalmente`);
+        }
+    });
+    
+    // Asignar event listeners para botones que necesitan funciones específicas
+    const extractBtn = document.getElementById('extract-metadata-btn');
+    if (extractBtn) {
+        extractBtn.addEventListener('click', function() {
+            if (typeof window.extractMetadata === 'function') {
+                window.extractMetadata();
+            } else {
+                console.error('extractMetadata no está disponible');
+            }
+        });
+    }
+    
+    const playBtn = document.getElementById('play-m3u8-btn');
+    if (playBtn) {
+        playBtn.addEventListener('click', function() {
+            if (typeof window.playM3U8 === 'function') {
+                window.playM3U8();
+            } else {
+                console.error('playM3U8 no está disponible');
+            }
+        });
+    }
 });
 </script>
 </body>
@@ -3605,6 +4240,27 @@ def descargar():
     if not is_valid_m3u8_url(m3u8_url):
         return jsonify({'error': 'URL M3U8 no válida'}), 400
     
+    # Verificar si ya hay una descarga activa de la misma URL
+    for existing_id, progress in multi_progress.items():
+        if progress.get('url') == m3u8_url:
+            status = progress.get('status')
+            if status == 'downloading':
+                return jsonify({
+                    'error': f'Ya hay una descarga activa de esta URL (ID: {existing_id})',
+                    'existing_download_id': existing_id
+                }), 409
+            elif status in ['error', 'cancelled', 'done'] and not resume_id:
+                # Si es error, cancelada o completada, permitir crear una nueva descarga
+                log_to_file(f"Permitiendo nueva descarga para URL previamente procesada (ID anterior: {existing_id}, status: {status})")
+                # Eliminar la descarga anterior del registro para limpiar el estado
+                log_to_file(f"Limpiando descarga anterior con ID: {existing_id}")
+                del multi_progress[existing_id]
+                # También limpiar de cancelled_downloads si estaba ahí
+                if existing_id in cancelled_downloads:
+                    cancelled_downloads.remove(existing_id)
+                save_download_state()
+                break
+    
     # Si es una reanudación, usar el ID existente
     if resume_id and resume_id in multi_progress:
         download_id = resume_id
@@ -3697,14 +4353,20 @@ def descargar():
             workers = get_current_workers()
             
             # Log inicio de descarga
-            log_download_start(m3u8_url, output_file, current_speed_mode)
+            log_download_start(m3u8_url, output_file, current_speed_mode, download_id)
+            
+            # Función de logging para el M3U8Downloader
+            def downloader_log(message):
+                log_info(message, download_id)
             
             # Descarga de segmentos con directorio específico y workers configurables
             downloader = M3U8Downloader(
                 m3u8_url=m3u8_url, 
                 output_filename=output_file, 
                 max_workers=workers,
-                temp_dir=temp_dir
+                temp_dir=temp_dir,
+                download_id=download_id,
+                log_function=downloader_log
             )
             segment_urls = downloader._get_segment_urls()
             multi_progress[download_id]['total'] = len(segment_urls)
@@ -3731,12 +4393,35 @@ def descargar():
                     # Obtener tiempo antes de la descarga
                     segment_start_time = time.time()
                     
-                    # Descargar segmento y obtener tamaño
-                    result = downloader._download_segment(url, i)
+                    # Descargar segmento con reintentos inteligentes
+                    result = None
+                    last_error = None
+                    
+                    for attempt in range(3):
+                        result = downloader._download_segment(url, i)
+                        if result:
+                            # Descarga exitosa con validación incluida
+                            break
+                        
+                        # Si es el primer intento, verificar si el servidor devuelve algo
+                        if attempt == 0:
+                            try:
+                                # Intentar hacer un HEAD request para verificar si la URL es válida
+                                test_response = downloader.session.head(url, timeout=5)
+                                if test_response.status_code in [404, 403, 410]:
+                                    last_error = f"Segmento no disponible en servidor (HTTP {test_response.status_code})"
+                                    break  # No reintentar si el segmento no existe
+                            except:
+                                pass  # Continuar con reintentos normales
+                        
+                        # Pausa breve antes del siguiente intento
+                        if attempt < 2:  # No esperar después del último intento
+                            time.sleep(0.5)
                     
                     # Verificar que el resultado es válido
                     if not result:
-                        raise Exception("No se pudo descargar el segmento")
+                        error_msg = last_error or "No se pudo descargar el segmento (falló tras reintentos)"
+                        raise Exception(error_msg)
                     
                     segment_name, bytes_downloaded = result
                     
@@ -3787,7 +4472,7 @@ def descargar():
                     multi_progress[download_id]['downloaded_segments'].append(i)
                     
                 except Exception as err:
-                    multi_progress[download_id]['error'] = f"Error al descargar el segmento {i+1}: {err}"
+                    multi_progress[download_id]['error'] = f"Error al descargar el segmento {i+1}/{len(segment_urls)}: {err}. Puedes reanudar luego."
                     multi_progress[download_id]['status'] = 'error'
                     multi_progress[download_id]['can_resume'] = True
                     save_download_state()
@@ -3814,8 +4499,43 @@ def descargar():
                 
             # Fusión y movimiento del archivo MP4
             if multi_progress[download_id]['status'] == 'downloading':
-                segment_files = [f'segment_{i:05d}.ts' for i in range(len(segment_urls))]
-                downloader._merge_segments(segment_files)
+                # Crear una lista con las rutas absolutas de los segmentos
+                list_path = os.path.join(temp_dir, 'filelist.txt')
+                with open(list_path, 'w', encoding='utf-8') as f:
+                    for i in range(len(segment_urls)):
+                        segment_filename = f'segment_{i:05d}.ts'
+                        segment_path = os.path.join(temp_dir, segment_filename)
+                        # Verificar si el segmento existe
+                        if os.path.exists(segment_path) and os.path.getsize(segment_path) > 0:
+                            # Normalizar a barras forward para ffmpeg en Windows
+                            norm_path = os.path.abspath(segment_path).replace('\\\\', '/')
+                            f.write(f"file '{norm_path}'\n")
+                        else:
+                            log_to_file(f"Segmento faltante o vacío: {segment_filename}", "WARNING", download_id)
+                
+                # Ejecutar FFmpeg con la ruta correcta
+                try:
+                    command = ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', list_path, '-c', 'copy', '-y', output_file]
+                    log_to_file(f"Comando FFmpeg a ejecutar: {' '.join(command)}", "INFO", download_id)
+                    process = subprocess_run(command, capture_output=True, text=True, encoding='utf-8', check=True)
+                    log_to_file(f"FFmpeg stdout: {process.stdout}", "INFO", download_id)
+                    
+                    # Verificar que el archivo de salida existe y no está vacío
+                    if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+                        log_to_file("El archivo de salida no fue creado o está vacío", "ERROR", download_id)
+                        multi_progress[download_id]['status'] = 'error'
+                        multi_progress[download_id]['error'] = "No se pudo generar el archivo final de video."
+                        multi_progress[download_id]['can_resume'] = True
+                        save_download_state()
+                        return
+                except CalledProcessError as e:
+                    log_to_file(f"Error en FFmpeg: {e.stderr}", "ERROR", download_id)
+                    multi_progress[download_id]['status'] = 'error'
+                    multi_progress[download_id]['error'] = "Error en FFmpeg al unir segmentos de video."
+                    multi_progress[download_id]['can_resume'] = True
+                    save_download_state()
+                    return
+                
                 # Usar la ruta organizada final (ya calculada con lógica de duplicados)
                 output_path = os.path.abspath(os.path.join(original_dir, output_file))
                 if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
@@ -3845,9 +4565,15 @@ def descargar():
                     multi_progress[download_id]['can_resume'] = True
                     
         except Exception as e:
+            error_msg = str(e)
             multi_progress[download_id]['status'] = 'error'
-            multi_progress[download_id]['error'] = str(e)
+            multi_progress[download_id]['error'] = error_msg
             multi_progress[download_id]['can_resume'] = True
+            
+            # Log detallado del error
+            log_download_error(output_file, error_msg, download_id)
+            log_to_file(f"❌ Error completo en descarga {download_id}: {error_msg}", "ERROR", download_id)
+            log_to_file(f"🔗 URL problemática: {m3u8_url}", "ERROR", download_id)
         finally:
             # Guardar estado final
             save_download_state()
@@ -4670,6 +5396,32 @@ def handle_speed_mode():
     # Método no permitido
     return jsonify({'success': False, 'error': 'Método no permitido'}), 405
 
+@app.route('/api/log_js_error', methods=['POST'])
+def log_js_error():
+    """Registra errores de JavaScript en el log del servidor"""
+    try:
+        data = request.get_json()
+        error_message = data.get('message', 'Error desconocido')
+        error_source = data.get('source', 'Desconocido')
+        error_line = data.get('line', 'N/A')
+        error_column = data.get('column', 'N/A')
+        error_stack = data.get('stack', '')
+        
+        # Formatear el mensaje de error
+        js_error_msg = f"JS ERROR: {error_message} | Fuente: {error_source}:{error_line}:{error_column}"
+        if error_stack:
+            js_error_msg += f" | Stack: {error_stack[:200]}..."
+        
+        # Registrar en logs
+        log_to_file(js_error_msg, level="ERROR")
+        log_info(f"🚨 {js_error_msg}")
+        
+        return jsonify({'success': True, 'message': 'Error registrado'})
+        
+    except Exception as e:
+        log_to_file(f"Error al registrar error JS: {str(e)}", level="ERROR")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/historial', methods=['GET'])
 def get_historial():
     """Obtiene el historial de descargas actualizado"""
@@ -4813,5 +5565,68 @@ def calculate_success_rate():
     
     return round((completed / total) * 100, 1) if total > 0 else 100
 
+# ============================================================================
+# ENDPOINTS DE LOGGING
+# ============================================================================
+
+@app.route('/api/logs/<download_id>')
+def get_download_logs(download_id):
+    """Obtiene los logs específicos de una descarga"""
+    try:
+        log_file = os.path.join(LOG_DIRECTORY, f"download_{download_id}.log")
+        if os.path.exists(log_file):
+            with open(log_file, 'r', encoding='utf-8') as f:
+                logs = f.read()
+            return jsonify({'success': True, 'logs': logs})
+        else:
+            return jsonify({'success': False, 'error': 'No se encontraron logs para esta descarga'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/logs')
+def get_general_logs():
+    """Obtiene los logs generales del día actual"""
+    try:
+        log_filename = f"m3u8_downloader_{datetime.now().strftime('%Y%m%d')}.log"
+        log_file = os.path.join(LOG_DIRECTORY, log_filename)
+        if os.path.exists(log_file):
+            with open(log_file, 'r', encoding='utf-8') as f:
+                logs = f.read()
+            return jsonify({'success': True, 'logs': logs, 'filename': log_filename})
+        else:
+            return jsonify({'success': False, 'error': 'No se encontraron logs para hoy'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/logs/list')
+def get_log_files():
+    """Lista todos los archivos de log disponibles"""
+    try:
+        if not os.path.exists(LOG_DIRECTORY):
+            return jsonify({'success': True, 'files': []})
+        
+        log_files = []
+        for filename in os.listdir(LOG_DIRECTORY):
+            if filename.endswith('.log'):
+                filepath = os.path.join(LOG_DIRECTORY, filename)
+                file_stats = os.stat(filepath)
+                log_files.append({
+                    'filename': filename,
+                    'size': file_stats.st_size,
+                    'modified': datetime.fromtimestamp(file_stats.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                })
+        
+        log_files.sort(key=lambda x: x['modified'], reverse=True)
+        return jsonify({'success': True, 'files': log_files})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 if __name__ == '__main__':
+    # Inicializar sistema de logging
+    setup_file_logging()
+    log_to_file("🚀 Aplicación M3U8 Downloader iniciada")
+    log_to_file(f"📁 Directorio de logs: {LOG_DIRECTORY}")
+    log_to_file(f"🔧 Modo de velocidad por defecto: {current_speed_mode}")
+    log_to_file(f"⚙️ Workers Normal: {MAX_WORKERS_NORMAL}, Turbo: {MAX_WORKERS_TURBO}")
+    
     app.run(debug=True, host='0.0.0.0', port=5000)
