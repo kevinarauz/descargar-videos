@@ -1257,20 +1257,8 @@ window.activeDownloads = {};
 // ============================================================================
 // DEFINICIONES GLOBALES ANTICIPADAS para onclick handlers
 // ============================================================================
-// Definir referencias globales para evitar "function not defined" errors
-window.toggleQueue = null;
-window.addToQueue = null;
-window.addToQueueFromForm = null;
-window.toggleSpeedMode = null;
-window.playM3U8 = null;
-window.extractMetadata = null;
-window.toggleConfig = null;
-window.updateMaxConcurrent = null;
-window.updateQuality = null;
-window.eliminarDescargaActiva = null;
-window.reproducirUrlActiva = null;
-window.reintentarDescarga = null;
-window.reanudarDescarga = null;
+// Las funciones se asignan al final de cada definición individual
+// No es necesario pre-declararlas aquí
 
 // Cargar configuración del localStorage
 function loadUserConfig() {
@@ -2567,27 +2555,85 @@ function playOnlyM3U8() {
 // Asignar función a referencia global
 window.playOnlyM3U8 = playOnlyM3U8;
 
-document.getElementById('descargar-form').addEventListener('submit', function(e) {
+document.getElementById('descargar-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     let url = document.getElementById('m3u8-url').value.trim();
     let outputName = document.getElementById('output-name').value.trim();
-    let params = 'm3u8_url=' + encodeURIComponent(url);
-    if (outputName) params += '&output_name=' + encodeURIComponent(outputName);
-    fetch('/descargar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params
-    }).then(r => r.json()).then(data => {
+    
+    if (!url) {
+        showNotification('Introduce una URL M3U8 válida', 'warning');
+        return;
+    }
+    
+    // Verificar primero si el contenido está encriptado antes de descargar
+    showNotification('🔍 Verificando contenido M3U8...', 'info');
+    
+    try {
+        // Analizar la URL primero para detectar encriptación
+        const analyzeResponse = await fetch('/analizar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'm3u8_url=' + encodeURIComponent(url)
+        });
+        
+        const analyzeData = await analyzeResponse.json();
+        
+        // Si detectamos encriptación, sugerir modo Solo Ver
+        if (analyzeData.error && (
+            analyzeData.error.includes('CIFRADO') || 
+            analyzeData.error.includes('EXT-X-KEY') ||
+            analyzeData.error.includes('encriptado') ||
+            analyzeData.error.includes('DRM')
+        )) {
+            const useViewOnly = confirm(
+                '🔐 CONTENIDO ENCRIPTADO DETECTADO\\n\\n' +
+                'Este video parece estar protegido con DRM/encriptación.\\n' +
+                'La descarga probablemente fallará.\\n\\n' +
+                '¿Quieres usar el modo "Solo Ver" en su lugar?\\n\\n' +
+                '✅ SÍ = Abrir reproductor (recomendado)\\n' +
+                '❌ NO = Intentar descarga (puede fallar)'
+            );
+            
+            if (useViewOnly) {
+                playOnlyM3U8();
+                return;
+            }
+        }
+        
+        // Si no hay problemas de encriptación o el usuario insiste, proceder con descarga
+        let params = 'm3u8_url=' + encodeURIComponent(url);
+        if (outputName) params += '&output_name=' + encodeURIComponent(outputName);
+        
+        const downloadResponse = await fetch('/descargar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params
+        });
+        
+        const data = await downloadResponse.json();
+        
         if (data.download_id) {
-            let url = document.getElementById('m3u8-url').value.trim();
             // Limpiar notificaciones previas antes de iniciar una nueva descarga
             limpiarNotificacionesDescarga(data.download_id);
             mostrarDescargaActiva(data.download_id, url);
             showNotification('Descarga iniciada', 'success');
         } else if (data.error) {
+            // Si falla la descarga y menciona encriptación, sugerir Solo Ver
+            if (data.error.includes('CIFRADO') || data.error.includes('encriptado') || data.error.includes('DRM')) {
+                const retryWithViewer = confirm(
+                    '❌ Error de descarga: ' + data.error + '\\n\\n' +
+                    '¿Quieres intentar reproducir este video en modo "Solo Ver"?'
+                );
+                if (retryWithViewer) {
+                    playOnlyM3U8();
+                    return;
+                }
+            }
             showNotification(data.error, 'danger');
         }
-    });
+    } catch (error) {
+        showNotification('Error de conexión: ' + error.message, 'danger');
+    }
 });
 
 function mostrarDescargaActiva(download_id, url) {
@@ -3421,6 +3467,8 @@ function reproducirUrl(url) {
         button.disabled = false;
     }, 2000);
 }
+// Asignar función a referencia global
+window.reproducirUrl = reproducirUrl;
 
 function reproducirUrlFromData(button) {
     let url = button.getAttribute('data-url');
@@ -3441,6 +3489,8 @@ function reproducirUrlFromData(button) {
         button.disabled = false;
     }, 2000);
 }
+// Asignar función a referencia global
+window.reproducirUrlFromData = reproducirUrlFromData;
 
 // Función eliminada - reemplazada por handleReproducirUrlActiva en event delegation
 
@@ -3485,8 +3535,11 @@ function ensureGlobalFunctions() {
     if (typeof reanudarDescarga === 'function') {
         window.reanudarDescarga = reanudarDescarga;
     }
-    if (typeof reproducirUrlActiva === 'function') {
-        window.reproducirUrlActiva = reproducirUrlActiva;
+    if (typeof reproducirUrl === 'function') {
+        window.reproducirUrl = reproducirUrl;
+    }
+    if (typeof reproducirUrlFromData === 'function') {
+        window.reproducirUrlFromData = reproducirUrlFromData;
     }
     if (typeof eliminarDescargaActiva === 'function') {
         window.eliminarDescargaActiva = eliminarDescargaActiva;
@@ -3527,7 +3580,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Diagnóstico de funciones disponibles
     console.log('🔍 Diagnóstico de funciones al inicializar:');
     const criticalFunctions = [
-        'reintentarDescarga', 'reanudarDescarga', 'reproducirUrlActiva',
+        'reintentarDescarga', 'reanudarDescarga', 'reproducirUrl', 'reproducirUrlFromData',
         'eliminarDescargaActiva', 'extractMetadata', 'playM3U8'
     ];
     
@@ -3700,26 +3753,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const functionsToCheck = [
         'toggleQueue', 'addToQueue', 'addToQueueFromForm', 'toggleSpeedMode',
         'playM3U8', 'extractMetadata', 'toggleConfig', 'updateMaxConcurrent',
-        'updateQuality', 'eliminarDescargaActiva', 'reproducirUrlActiva',
+        'updateQuality', 'eliminarDescargaActiva', 'reproducirUrl', 'reproducirUrlFromData',
         'reintentarDescarga', 'reanudarDescarga'
     ];
     
-    // Forzar asignación de funciones críticas al objeto global
-    if (typeof extractMetadata === 'function') {
-        window.extractMetadata = extractMetadata;
-    }
-    if (typeof playM3U8 === 'function') {
-        window.playM3U8 = playM3U8;
-    }
-    if (typeof reintentarDescarga === 'function') {
-        window.reintentarDescarga = reintentarDescarga;
-    }
-    if (typeof reanudarDescarga === 'function') {
-        window.reanudarDescarga = reanudarDescarga;
-    }
-    if (typeof reproducirUrlActiva === 'function') {
-        window.reproducirUrlActiva = reproducirUrlActiva;
-    }
+    // Las funciones ya están asignadas individualmente - evitar duplicación
     if (typeof eliminarDescargaActiva === 'function') {
         window.eliminarDescargaActiva = eliminarDescargaActiva;
     }
