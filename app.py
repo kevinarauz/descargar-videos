@@ -5378,6 +5378,106 @@ def get_m3u8_metadata():
         print(f"Error en /api/metadata: {str(e)}")
         return jsonify({'success': False, 'error': f'Error interno del servidor: {str(e)}'}), 500
 
+@app.route('/analizar', methods=['POST'])
+def analizar_m3u8():
+    """Analiza una URL M3U8 para detectar encriptación/DRM antes de descargar"""
+    import requests
+    
+    try:
+        # Obtener URL desde form-data
+        m3u8_url = request.form.get('m3u8_url', '').strip()
+        
+        if not m3u8_url:
+            return jsonify({'success': False, 'error': 'URL M3U8 no proporcionada'}), 400
+        
+        if not is_valid_m3u8_url(m3u8_url):
+            return jsonify({'success': False, 'error': f'URL M3U8 no válida: {m3u8_url}'}), 400
+        
+        print(f"🔍 Analizando contenido M3U8: {m3u8_url}")
+        
+        # Crear downloader temporal solo para análisis
+        temp_downloader = M3U8Downloader(
+            m3u8_url=m3u8_url,
+            output_filename='temp_analysis.mp4',
+            max_workers=1,  # Solo 1 worker para análisis rápido
+            temp_dir='temp_analysis',
+            download_id='analysis',
+            log_function=lambda msg: print(f"📋 Análisis: {msg}")
+        )
+        
+        # Intentar obtener la lista de segmentos para detectar problemas
+        try:
+            segment_urls = temp_downloader._get_segment_urls()
+            
+            if not segment_urls:
+                return jsonify({
+                    'success': False, 
+                    'error': 'No se encontraron segmentos de video. Posible contenido encriptado o inválido.'
+                })
+            
+            # Intentar descargar el primer segmento para verificar si está encriptado
+            if len(segment_urls) > 0:
+                print(f"🧪 Probando primer segmento: {segment_urls[0]}")
+                
+                # Crear directorio temporal si no existe
+                os.makedirs('temp_analysis', exist_ok=True)
+                
+                # Intentar descargar solo el primer segmento
+                result = temp_downloader._download_segment(segment_urls[0], 0)
+                
+                # Limpiar archivos temporales
+                try:
+                    if os.path.exists('temp_analysis'):
+                        for file in os.listdir('temp_analysis'):
+                            os.remove(os.path.join('temp_analysis', file))
+                        os.rmdir('temp_analysis')
+                except:
+                    pass
+                
+                if result is None:
+                    # El segmento falló al descargar - probablemente encriptado
+                    return jsonify({
+                        'success': False,
+                        'error': 'CONTENIDO ENCRIPTADO/DRM detectado. Los segmentos no se pueden descargar directamente.',
+                        'encrypted': True,
+                        'suggestion': 'Usa el modo "Solo Ver" para reproducir este contenido.'
+                    })
+                else:
+                    # El segmento se descargó correctamente
+                    return jsonify({
+                        'success': True,
+                        'message': 'Contenido analizado - parece descargable',
+                        'segments_found': len(segment_urls),
+                        'encrypted': False
+                    })
+            
+        except ValueError as ve:
+            error_msg = str(ve)
+            if 'CIFRADO' in error_msg or 'EXT-X-KEY' in error_msg:
+                return jsonify({
+                    'success': False,
+                    'error': f'CONTENIDO ENCRIPTADO detectado: {error_msg}',
+                    'encrypted': True,
+                    'suggestion': 'Usa el modo "Solo Ver" para reproducir este contenido.'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': f'Error analizando contenido: {error_msg}'
+                })
+        
+        except Exception as download_error:
+            print(f"⚠️ Error en análisis de descarga: {download_error}")
+            return jsonify({
+                'success': False,
+                'error': f'No se pudo analizar el contenido: {str(download_error)}',
+                'suggestion': 'Puedes intentar el modo "Solo Ver" si crees que el contenido está encriptado.'
+            })
+        
+    except Exception as e:
+        print(f"❌ Error en /analizar: {str(e)}")
+        return jsonify({'success': False, 'error': f'Error interno del servidor: {str(e)}'}), 500
+
 @app.route('/api/active_downloads', methods=['GET'])
 def get_active_downloads():
     """Obtiene todas las descargas activas para cargar al refrescar"""
