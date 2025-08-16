@@ -265,16 +265,65 @@ class M3U8Downloader:
             self.log_function(f"📁 Directorio temporal creado en: '{self.temp_dir}'")
         
         successful_segments = []
+        failed_segments = 0
+        encrypted_segments_detected = 0
+        
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {executor.submit(self._download_segment, url, i): i for i, url in enumerate(segment_urls)}
             
+            completed_count = 0
             for future in tqdm(as_completed(futures), total=len(segment_urls), desc="📥 Descargando segmentos (paralelo)"):
                 result = future.result()
+                completed_count += 1
+                
                 if result:
                     segment_filename, bytes_downloaded = result
                     successful_segments.append(segment_filename)
+                else:
+                    failed_segments += 1
+                    
+                    # Detectar si es probable contenido encriptado
+                    # Si los primeros 10 segmentos fallan, es probable que todo esté encriptado
+                    if completed_count <= 10 and failed_segments >= completed_count:
+                        encrypted_segments_detected += 1
+                    
+                    # Si los primeros 10 segmentos fallan completamente, abortar
+                    if completed_count >= 10 and successful_segments == 0:
+                        self.log_function(f"🔐 DETECTADO: Los primeros {completed_count} segmentos fallaron completamente.")
+                        self.log_function("🔐 Esto indica contenido ENCRIPTADO/DRM que no se puede descargar.")
+                        self.log_function("💡 Sugerencia: Usa el botón 'Solo Ver' para reproducir este contenido.")
+                        
+                        # Cancelar futures pendientes
+                        for pending_future in futures:
+                            pending_future.cancel()
+                        
+                        raise ValueError("CONTENIDO ENCRIPTADO/DRM detectado: Todos los segmentos iniciales fallaron. Usa el modo 'Solo Ver' para reproducir este contenido.")
+                
+                # Verificación adicional: si más del 95% de segmentos completados han fallado y ya completamos suficientes
+                if completed_count >= 20:
+                    failure_rate = failed_segments / completed_count
+                    if failure_rate > 0.95:
+                        self.log_function(f"🔐 DETECTADO: {failure_rate*100:.1f}% de segmentos han fallado ({failed_segments}/{completed_count}).")
+                        self.log_function("🔐 Esto indica contenido ENCRIPTADO/DRM que no se puede descargar.")
+                        self.log_function("💡 Sugerencia: Usa el botón 'Solo Ver' para reproducir este contenido.")
+                        
+                        # Cancelar futures pendientes
+                        for pending_future in futures:
+                            pending_future.cancel()
+                        
+                        raise ValueError("CONTENIDO ENCRIPTADO/DRM detectado: Tasa de fallo muy alta en segmentos. Usa el modo 'Solo Ver' para reproducir este contenido.")
 
         successful_segments.sort()
+        
+        # Verificación final
+        total_segments = len(segment_urls)
+        success_rate = len(successful_segments) / total_segments if total_segments > 0 else 0
+        
+        if success_rate < 0.1:  # Menos del 10% exitosos
+            self.log_function(f"🔐 RESULTADO FINAL: Solo {len(successful_segments)}/{total_segments} segmentos descargados exitosamente ({success_rate*100:.1f}%).")
+            self.log_function("🔐 Esto confirma que el contenido está ENCRIPTADO/DRM.")
+            raise ValueError("CONTENIDO ENCRIPTADO/DRM confirmado: Tasa de éxito muy baja. Usa el modo 'Solo Ver' para reproducir este contenido.")
+        
         self.log_function(f"📥 Descarga de segmentos completada: {len(successful_segments)}/{len(segment_urls)} exitosos")
         return successful_segments
         

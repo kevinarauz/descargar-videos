@@ -3054,18 +3054,39 @@ function actualizarProgreso(download_id) {
             if (descargaDiv) descargaDiv.className += ' descarga-error';
             if (stats) stats.innerText = 'Error en la descarga';
             
+            // Detectar si es un error de contenido encriptado
+            const isEncryptedError = data.encrypted || 
+                (data.error && (data.error.includes('ENCRIPTADO') || data.error.includes('DRM') || data.error.includes('CIFRADO')));
+            
+            let errorMessage = data.error;
+            if (isEncryptedError && data.suggestion) {
+                errorMessage += '<br><div class="mt-2 alert alert-info p-2"><strong>💡 ' + data.suggestion + '</strong></div>';
+            }
+            
             let buttonsHtml = 
-                '<div class="mt-2 text-danger">' + data.error + '</div>' +
+                '<div class="mt-2 text-danger">' + errorMessage + '</div>' +
                 '<div class="mt-2 url-display small">' +
                     '<strong>URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>' +
                 '</div>' +
-                '<div class="mt-2">' +
-                    '<button class="btn btn-warning btn-sm me-2" id="retry-btn-' + download_id + '" title="Reintentar descarga">' +
-                        'Reintentar' +
-                    '</button>';
+                '<div class="mt-2">';
             
-            // Añadir botón de reanudar si es posible
-            if (data.can_resume) {
+            // Si es contenido encriptado, mostrar botón "Solo Ver" prominentemente
+            if (isEncryptedError) {
+                buttonsHtml += 
+                    '<button class="btn btn-primary btn-sm me-2" id="view-only-btn-' + download_id + '" title="Reproducir contenido encriptado sin descargar">' +
+                        '👀 Solo Ver' +
+                    '</button>';
+            }
+            
+            // Botón de reintentar (menos prominente para contenido encriptado)
+            const retryClass = isEncryptedError ? 'btn-outline-warning' : 'btn-warning';
+            buttonsHtml += 
+                '<button class="btn ' + retryClass + ' btn-sm me-2" id="retry-btn-' + download_id + '" title="Reintentar descarga">' +
+                    'Reintentar' +
+                '</button>';
+            
+            // Añadir botón de reanudar si es posible (no para contenido encriptado)
+            if (data.can_resume && !isEncryptedError) {
                 buttonsHtml += 
                     '<button class="btn btn-info btn-sm me-2" id="resume-btn-' + download_id + '" title="Reanudar descarga">' +
                         'Continuar' +
@@ -3091,6 +3112,7 @@ function actualizarProgreso(download_id) {
                     const resumeBtn = document.getElementById('resume-btn-' + download_id);
                     const playBtn = document.getElementById('play-error-btn-' + download_id);
                     const removeBtn = document.getElementById('remove-error-btn-' + download_id);
+                    const viewOnlyBtn = document.getElementById('view-only-btn-' + download_id);
                     
                     if (retryBtn) {
                         retryBtn.setAttribute('data-download-id', download_id);
@@ -3106,6 +3128,17 @@ function actualizarProgreso(download_id) {
                     }
                     if (removeBtn) {
                         removeBtn.onclick = function() { eliminarDescargaActiva(download_id); };
+                    }
+                    if (viewOnlyBtn) {
+                        viewOnlyBtn.onclick = function() {
+                            // Obtener la URL desde los datos de progreso y abrir el reproductor
+                            if (data.url) {
+                                document.getElementById('m3u8-url').value = data.url;
+                                playOnlyM3U8();
+                            } else {
+                                showNotification('No se pudo obtener la URL para reproducir', 'warning');
+                            }
+                        };
                     }
                 }, 10);
             }
@@ -4604,9 +4637,28 @@ def descargar():
                     
         except Exception as e:
             error_msg = str(e)
+            
+            # Detectar si es un error de contenido encriptado/DRM
+            is_encrypted_error = any(keyword in error_msg.upper() for keyword in [
+                'ENCRIPTADO', 'DRM', 'CIFRADO', 'EXT-X-KEY', 'ENCRYPTED'
+            ])
+            
             multi_progress[download_id]['status'] = 'error'
-            multi_progress[download_id]['error'] = error_msg
-            multi_progress[download_id]['can_resume'] = True
+            
+            if is_encrypted_error:
+                # Error específico para contenido encriptado
+                multi_progress[download_id]['error'] = f"🔐 CONTENIDO ENCRIPTADO/DRM: {error_msg}"
+                multi_progress[download_id]['can_resume'] = False  # No se puede reanudar contenido encriptado
+                multi_progress[download_id]['encrypted'] = True
+                multi_progress[download_id]['suggestion'] = "Usa el botón 'Solo Ver' para reproducir este contenido."
+                
+                # Log específico para contenido encriptado
+                log_to_file(f"🔐 CONTENIDO ENCRIPTADO detectado en descarga {download_id}", "WARNING", download_id)
+                log_to_file(f"📋 Sugerencia: Usar modo 'Solo Ver' para reproducir", "INFO", download_id)
+            else:
+                # Error normal
+                multi_progress[download_id]['error'] = error_msg
+                multi_progress[download_id]['can_resume'] = True
             
             # Log detallado del error
             log_download_error(output_file, error_msg, download_id)
