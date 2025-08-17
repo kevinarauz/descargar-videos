@@ -3871,7 +3871,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ============================================================================
 
 function analyzeDRM() {
-    const urlInput = document.getElementById('url');
+    const urlInput = document.getElementById('m3u8-url');
     const url = urlInput.value.trim();
     
     if (!url) {
