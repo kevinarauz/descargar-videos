@@ -1251,10 +1251,7 @@ default_html = '''
       
       <!-- Área de selección de calidad -->
       <div id="quality-container" class="form-container" style="display: none;">
-        <h5 class="fw-semibold mb-3">📊 Selector de Calidad - Master Playlist</h5>
-        <div class="alert alert-info">
-          <small><strong>Master Playlist detectado:</strong> Puedes elegir entre diferentes calidades de video disponibles.</small>
-        </div>
+        <h5 class="fw-semibold mb-3">📊 Análisis de Calidad</h5>
         <div id="quality-content"></div>
       </div>
       
@@ -3926,7 +3923,10 @@ function analyzeMasterPlaylist() {
 function showQualitySelector(qualities, originalUrl) {
     const qualityContent = document.getElementById('quality-content');
     
-    let html = '<div class="row">';
+    let html = '<div class="alert alert-success mb-3">';
+    html += '<strong>✅ Master Playlist detectado:</strong> Encontradas ' + qualities.length + ' opciones de calidad disponibles.';
+    html += '</div>';
+    html += '<div class="row">';
     
     qualities.forEach((quality, index) => {
         const isDefault = index === 0; // La primera es la mejor calidad
@@ -5795,13 +5795,24 @@ def parse_master_playlist(m3u8_url):
             'qualities': [{'url': str, 'bandwidth': int, 'resolution': str, 'label': str}]
         }
     """
+    import requests
+    import re
+    
     try:
+        log_to_file(f"🔍 Analizando URL: {m3u8_url}")
         response = requests.get(m3u8_url, timeout=10)
         response.raise_for_status()
         content = response.text
         
+        log_to_file(f"📄 Contenido descargado ({len(content)} chars)")
+        log_to_file(f"📄 Primeras 500 chars: {content[:500]}")
+        
         # Verificar si es un Master Playlist
-        if '#EXT-X-STREAM-INF' not in content:
+        has_stream_inf = '#EXT-X-STREAM-INF' in content
+        log_to_file(f"🔍 ¿Contiene #EXT-X-STREAM-INF? {has_stream_inf}")
+        
+        if not has_stream_inf:
+            log_to_file(f"❌ No es Master Playlist - no contiene #EXT-X-STREAM-INF")
             return {'is_master': False, 'qualities': []}
         
         qualities = []
@@ -5852,6 +5863,11 @@ def parse_master_playlist(m3u8_url):
         # Ordenar por bandwidth (mayor a menor)
         qualities.sort(key=lambda x: x['bandwidth'], reverse=True)
         
+        log_to_file(f"✅ Master Playlist procesado exitosamente")
+        log_to_file(f"📊 Encontradas {len(qualities)} calidades:")
+        for i, q in enumerate(qualities):
+            log_to_file(f"  {i+1}. {q['label']} - {q['url']}")
+        
         return {
             'is_master': True,
             'qualities': qualities
@@ -5874,6 +5890,9 @@ def parse_master_endpoint():
         # Analizar Master Playlist
         result = parse_master_playlist(url)
         
+        # Debug logging
+        log_to_file(f"Parse result: is_master={result['is_master']}, qualities={len(result.get('qualities', []))}")
+        
         if result['is_master']:
             log_to_file(f"Master Playlist detectado con {len(result['qualities'])} calidades")
             return jsonify({
@@ -5883,6 +5902,7 @@ def parse_master_endpoint():
                 'message': f"Master Playlist detectado con {len(result['qualities'])} opciones de calidad"
             })
         else:
+            log_to_file(f"No es Master Playlist para URL: {url}")
             return jsonify({
                 'success': True,
                 'is_master': False,
