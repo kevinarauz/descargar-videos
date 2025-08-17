@@ -46,10 +46,11 @@ class DRMDecryptionModule:
     IMPORTANTE: Solo para investigación educativa
     """
     
-    def __init__(self, analysis_file: str, output_dir: str = "decrypted_content"):
+    def __init__(self, analysis_file: str, output_dir: str = "decrypted_content", progress_callback=None):
         self.analysis_file = analysis_file
         self.output_dir = output_dir
         self.session = requests.Session()
+        self.progress_callback = progress_callback
         self.decryption_stats = {
             'total_segments': 0,
             'encrypted_segments': 0,
@@ -57,7 +58,8 @@ class DRMDecryptionModule:
             'decryption_failed': 0,
             'keys_obtained': 0,
             'start_time': None,
-            'end_time': None
+            'end_time': None,
+            'current_segment': 0
         }
         
         # Headers realistas
@@ -327,6 +329,21 @@ class DRMDecryptionModule:
                         self.decryption_stats['decrypted_successfully'] += 1
                     elif result['encrypted'] and not result['decrypted']:
                         self.decryption_stats['decryption_failed'] += 1
+                    
+                    # Actualizar contador de progreso
+                    self.decryption_stats['current_segment'] = len(results)
+                    
+                    # Llamar callback de progreso si está disponible
+                    if self.progress_callback:
+                        progress_data = {
+                            'status': 'processing',
+                            'current_segment': self.decryption_stats['current_segment'],
+                            'total_segments': self.decryption_stats['total_segments'],
+                            'decrypted_successfully': self.decryption_stats['decrypted_successfully'],
+                            'decryption_failed': self.decryption_stats['decryption_failed'],
+                            'start_time': self.decryption_stats['start_time'].timestamp() if self.decryption_stats['start_time'] else None
+                        }
+                        self.progress_callback(progress_data)
                     
                     # Actualizar descripción
                     desc = f"Descifrados: {self.decryption_stats['decrypted_successfully']}, " \
@@ -620,12 +637,12 @@ class DRMDecryptionModule:
         
         return merge_result
 
-def decrypt_drm_content(analysis_file: str, max_workers: int = 20) -> Dict:
+def decrypt_drm_content(analysis_file: str, max_workers: int = 20, progress_callback=None) -> Dict:
     """Función de conveniencia para descifrado completo con unión automática"""
-    decryptor = DRMDecryptionModule(analysis_file)
+    decryptor = DRMDecryptionModule(analysis_file, progress_callback=progress_callback)
     return decryptor.decrypt_all_segments(max_workers)
 
-def decrypt_and_merge_drm_content(analysis_file: str, output_filename: str = None, max_workers: int = 20) -> Dict:
+def decrypt_and_merge_drm_content(analysis_file: str, output_filename: str = None, max_workers: int = 20, progress_callback=None) -> Dict:
     """
     Función completa: descifra contenido DRM y une segmentos en video final
     
@@ -637,7 +654,7 @@ def decrypt_and_merge_drm_content(analysis_file: str, output_filename: str = Non
     Returns:
         Dict con resultados completos del proceso
     """
-    decryptor = DRMDecryptionModule(analysis_file)
+    decryptor = DRMDecryptionModule(analysis_file, progress_callback=progress_callback)
     
     # Descifrar todos los segmentos
     decrypt_result = decryptor.decrypt_all_segments(max_workers)

@@ -4109,17 +4109,55 @@ function monitorDRMProgress(decryptId) {
                 const status = data.status;
                 
                 if (status.status === 'processing') {
-                    contentDiv.innerHTML = `
+                    let progressHtml = `
                         <div class="text-center">
                             <div class="spinner-border text-warning" role="status"></div>
                             <p class="mt-2">Descifrando contenido DRM...</p>
-                            <small class="text-muted">ID: ${decryptId}</small>
-                        </div>
                     `;
+                    
+                    // Mostrar progreso detallado si está disponible
+                    if (status.current_segment && status.total_segments) {
+                        const progress = Math.round((status.current_segment / status.total_segments) * 100);
+                        progressHtml += `
+                            <div class="progress mt-2 mb-2" style="height: 8px;">
+                                <div class="progress-bar bg-warning" style="width: ${progress}%"></div>
+                            </div>
+                            <small>Segmento ${status.current_segment} de ${status.total_segments} (${progress}%)</small><br>
+                        `;
+                        
+                        // Calcular tiempo restante estimado
+                        if (status.start_time) {
+                            const elapsed = (Date.now() / 1000) - status.start_time;
+                            const rate = status.current_segment / elapsed;
+                            const remaining = status.total_segments - status.current_segment;
+                            const eta = remaining / rate;
+                            
+                            if (eta > 0 && eta < 7200) { // Solo mostrar si es razonable (< 2 horas)
+                                const etaMinutes = Math.floor(eta / 60);
+                                const etaSeconds = Math.floor(eta % 60);
+                                progressHtml += `<small class="text-info">Tiempo restante estimado: ${etaMinutes}m ${etaSeconds}s</small><br>`;
+                            }
+                            
+                            const elapsedMinutes = Math.floor(elapsed / 60);
+                            const elapsedSeconds = Math.floor(elapsed % 60);
+                            progressHtml += `<small class="text-muted">Tiempo transcurrido: ${elapsedMinutes}m ${elapsedSeconds}s</small><br>`;
+                        }
+                    }
+                    
+                    progressHtml += `<small class="text-muted">ID: ${decryptId}</small></div>`;
+                    contentDiv.innerHTML = progressHtml;
                     setTimeout(checkProgress, 2000);
                     
                 } else if (status.status === 'completed') {
                     let html = '<div class="alert alert-success"><strong>🎉 Descifrado Completado</strong></div>';
+                    
+                    // Mostrar tiempo de desencriptación
+                    if (status.start_time && status.end_time) {
+                        const decryptionTime = status.end_time - status.start_time;
+                        const minutes = Math.floor(decryptionTime / 60);
+                        const seconds = Math.floor(decryptionTime % 60);
+                        html += `<div class="alert alert-info mb-3">⏱️ <strong>Tiempo de desencriptación:</strong> ${minutes}m ${seconds}s</div>`;
+                    }
                     
                     if (status.total_segments) {
                         html += '<div class="row text-center mb-3">';
@@ -6449,10 +6487,42 @@ def decrypt_drm_endpoint():
         # Generar ID único para el proceso de descifrado
         decrypt_id = str(uuid.uuid4())[:8]
         
+        # Función callback para actualizar progreso
+        def update_progress(progress_data):
+            drm_key = f"drm_{decrypt_id}"
+            if drm_key not in multi_progress:
+                multi_progress[drm_key] = {
+                    'id': decrypt_id,
+                    'type': 'drm_decrypt',
+                    'status': 'processing'
+                }
+            
+            # Actualizar con datos de progreso
+            multi_progress[drm_key].update(progress_data)
+            multi_progress[drm_key]['id'] = decrypt_id
+            multi_progress[drm_key]['type'] = 'drm_decrypt'
+        
         # Ejecutar descifrado en hilo separado
         def decrypt_process():
             try:
-                result = decrypt_drm_content(analysis_file, max_workers)
+                # Inicializar estado en progreso
+                multi_progress[f"drm_{decrypt_id}"] = {
+                    'id': decrypt_id,
+                    'type': 'drm_decrypt',
+                    'status': 'processing',
+                    'timestamp': time.time()
+                }
+                
+                result = decrypt_drm_content(analysis_file, max_workers, progress_callback=update_progress)
+                
+                # Agregar tiempos de inicio y fin al resultado final
+                if 'stats' in result:
+                    stats = result['stats']
+                    if stats.get('start_time') and stats.get('end_time'):
+                        start_time = stats['start_time'].timestamp() if hasattr(stats['start_time'], 'timestamp') else stats['start_time']
+                        end_time = stats['end_time'].timestamp() if hasattr(stats['end_time'], 'timestamp') else stats['end_time']
+                        result['start_time'] = start_time
+                        result['end_time'] = end_time
                 
                 # Guardar resultado en variable global para consulta
                 multi_progress[f"drm_{decrypt_id}"] = {
@@ -6460,6 +6530,8 @@ def decrypt_drm_endpoint():
                     'type': 'drm_decrypt',
                     'status': 'completed' if result['success'] else 'failed',
                     'result': result,
+                    'start_time': result.get('start_time'),
+                    'end_time': result.get('end_time'),
                     'timestamp': time.time()
                 }
                 
