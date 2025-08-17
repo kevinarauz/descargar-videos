@@ -3973,7 +3973,7 @@ function selectQuality(qualityUrl, qualityLabel) {
     
     // Mostrar la nueva URL en los metadatos
     setTimeout(() => {
-        requestMetadata();
+        extractMetadata();
     }, 500);
 }
 
