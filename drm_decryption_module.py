@@ -473,7 +473,35 @@ class DRMDecryptionModule:
                 merge_result['error'] = "No se encontraron segmentos descifrados para unir"
                 return merge_result
             
-            safe_print(f"Encontrados {len(segment_files)} segmentos para unir")
+            safe_print(f"Encontrados {len(segment_files)} segmentos para validar y unir")
+            
+            # Validar segmentos con ffprobe para evitar corruptos
+            valid_segments = []
+            corrupted_count = 0
+            
+            for segment_file in segment_files:
+                segment_path = os.path.join(decrypted_dir, segment_file)
+                
+                # Verificar con ffprobe si el segmento es válido
+                probe_cmd = ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration', segment_path]
+                try:
+                    probe_result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=5)
+                    if probe_result.returncode == 0:
+                        valid_segments.append(segment_file)
+                    else:
+                        corrupted_count += 1
+                        safe_print(f"Omitiendo segmento corrupto: {segment_file}")
+                except subprocess.TimeoutExpired:
+                    corrupted_count += 1
+                    safe_print(f"Timeout verificando segmento: {segment_file}")
+            
+            if not valid_segments:
+                merge_result['error'] = "No se encontraron segmentos válidos para unir"
+                return merge_result
+            
+            safe_print(f"Segmentos válidos: {len(valid_segments)}")
+            if corrupted_count > 0:
+                safe_print(f"Segmentos omitidos (corruptos): {corrupted_count}")
             
             # Generar nombre de archivo de salida
             if not output_filename:
@@ -482,10 +510,10 @@ class DRMDecryptionModule:
             
             output_path = os.path.join(self.output_dir, output_filename)
             
-            # Crear archivo de lista para FFmpeg
+            # Crear archivo de lista para FFmpeg con solo segmentos válidos
             filelist_path = os.path.join(self.output_dir, "segments_list.txt")
             with open(filelist_path, 'w', encoding='utf-8') as f:
-                for segment_file in segment_files:
+                for segment_file in valid_segments:
                     segment_path = os.path.join(decrypted_dir, segment_file)
                     # Usar rutas absolutas y escapar backslashes para Windows
                     abs_path = os.path.abspath(segment_path).replace('\\', '/')
@@ -495,13 +523,15 @@ class DRMDecryptionModule:
             safe_print(f"Archivo de salida: {output_path}")
             safe_print("Ejecutando FFmpeg para unir segmentos...")
             
-            # Comando FFmpeg para concatenar segmentos
+            # Comando FFmpeg para concatenar segmentos con configuración mejorada
             ffmpeg_cmd = [
                 'ffmpeg',
                 '-f', 'concat',
                 '-safe', '0',
                 '-i', filelist_path,
                 '-c', 'copy',  # Copiar sin recodificar
+                '-avoid_negative_ts', 'make_zero',  # Manejar timestamps negativos
+                '-fflags', '+genpts',  # Generar timestamps
                 '-y',  # Sobrescribir archivo de salida
                 output_path
             ]
@@ -526,14 +556,18 @@ class DRMDecryptionModule:
                     merge_result.update({
                         'success': True,
                         'output_file': output_path,
-                        'segments_merged': len(segment_files),
+                        'segments_merged': len(valid_segments),
+                        'segments_total': len(segment_files),
+                        'segments_corrupted': corrupted_count,
                         'final_size': file_size,
                         'duration': merge_duration
                     })
                     
                     safe_print(f"✅ UNIÓN COMPLETADA EXITOSAMENTE")
                     safe_print(f"Archivo final: {output_path}")
-                    safe_print(f"Segmentos unidos: {len(segment_files)}")
+                    safe_print(f"Segmentos unidos: {len(valid_segments)} de {len(segment_files)}")
+                    if corrupted_count > 0:
+                        safe_print(f"Segmentos omitidos (corruptos): {corrupted_count}")
                     safe_print(f"Tamaño final: {file_size / (1024*1024):.1f} MB")
                     safe_print(f"Tiempo de unión: {merge_duration:.1f} segundos")
                     

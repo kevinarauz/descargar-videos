@@ -4025,8 +4025,14 @@ function monitorDRMProgress(decryptId) {
                             html += '<div class="alert alert-success">';
                             html += '<strong>🎬 Video Final Creado</strong><br>';
                             html += `📁 Archivo: <code>${status.merge_result.output_file}</code><br>`;
-                            html += `📊 Segmentos unidos: ${status.merge_result.segments_merged}<br>`;
-                            html += `💾 Tamaño: ${(status.merge_result.final_size / (1024*1024)).toFixed(1)} MB<br>`;
+                            html += `📊 Segmentos unidos: ${status.merge_result.segments_merged}`;
+                            if (status.merge_result.segments_total) {
+                                html += ` de ${status.merge_result.segments_total}`;
+                                if (status.merge_result.segments_corrupted > 0) {
+                                    html += ` (${status.merge_result.segments_corrupted} omitidos)`;
+                                }
+                            }
+                            html += `<br>💾 Tamaño: ${(status.merge_result.final_size / (1024*1024)).toFixed(1)} MB<br>`;
                             html += `⏱️ Tiempo de unión: ${status.merge_result.duration.toFixed(1)}s`;
                             html += '</div>';
                         } else {
