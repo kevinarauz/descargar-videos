@@ -366,6 +366,19 @@ class DRMDecryptionModule:
             safe_print("INICIANDO UNIÓN AUTOMÁTICA DE SEGMENTOS")
             safe_print("="*50)
             
+            # Notificar inicio de fase de unión
+            if self.progress_callback:
+                merge_progress_data = {
+                    'status': 'merging',
+                    'current_segment': self.decryption_stats['total_segments'],
+                    'total_segments': self.decryption_stats['total_segments'],
+                    'decrypted_successfully': self.decryption_stats['decrypted_successfully'],
+                    'decryption_failed': self.decryption_stats['decryption_failed'],
+                    'start_time': self.decryption_stats['start_time'].timestamp() if self.decryption_stats['start_time'] else None,
+                    'merge_start_time': datetime.now().timestamp()
+                }
+                self.progress_callback(merge_progress_data)
+            
             merge_result = self.merge_decrypted_segments()
             
             if merge_result['success']:

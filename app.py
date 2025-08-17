@@ -4165,15 +4165,69 @@ function monitorDRMProgress(decryptId) {
                     contentDiv.innerHTML = progressHtml;
                     setTimeout(checkProgress, 1000); // Actualizar cada segundo para tiempo más preciso
                     
+                } else if (status.status === 'merging') {
+                    // Fase de unión de segmentos con FFmpeg
+                    let mergeHtml = `
+                        <div class="text-center">
+                            <div class="spinner-border text-success" role="status"></div>
+                            <p class="mt-2">🔧 Uniendo segmentos descifrados...</p>
+                            <div class="progress mt-2 mb-2" style="height: 8px;">
+                                <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" style="width: 100%"></div>
+                            </div>
+                            <small>Procesamiento con FFmpeg en curso</small><br>
+                    `;
+                    
+                    // Mostrar tiempo de descifrado completado y tiempo de unión
+                    if (status.start_time && status.merge_start_time) {
+                        const decryptTime = status.merge_start_time - status.start_time;
+                        const decryptMinutes = Math.floor(decryptTime / 60);
+                        const decryptSeconds = Math.floor(decryptTime % 60);
+                        
+                        const mergeElapsed = (Date.now() / 1000) - status.merge_start_time;
+                        const mergeMinutes = Math.floor(mergeElapsed / 60);
+                        const mergeSecondsVal = Math.floor(mergeElapsed % 60);
+                        
+                        mergeHtml += `
+                            <div class="alert alert-info py-1 px-2 mt-2 mb-1">
+                                <small>✅ Descifrado: ${decryptMinutes}m ${decryptSeconds}s</small><br>
+                                <small>⏱️ Uniendo: ${mergeMinutes}m ${mergeSecondsVal}s</small>
+                            </div>
+                        `;
+                    }
+                    
+                    mergeHtml += `<small class="text-muted">ID: ${decryptId}</small></div>`;
+                    contentDiv.innerHTML = mergeHtml;
+                    setTimeout(checkProgress, 1000);
+                    
                 } else if (status.status === 'completed') {
                     let html = '<div class="alert alert-success"><strong>🎉 Descifrado Completado</strong></div>';
                     
-                    // Mostrar tiempo de desencriptación
+                    // Mostrar tiempos desglosados
                     if (status.start_time && status.end_time) {
-                        const decryptionTime = status.end_time - status.start_time;
-                        const minutes = Math.floor(decryptionTime / 60);
-                        const seconds = Math.floor(decryptionTime % 60);
-                        html += `<div class="alert alert-info mb-3">⏱️ <strong>Tiempo de desencriptación:</strong> ${minutes}m ${seconds}s</div>`;
+                        const totalTime = status.end_time - status.start_time;
+                        const totalMinutes = Math.floor(totalTime / 60);
+                        const totalSeconds = Math.floor(totalTime % 60);
+                        
+                        html += `<div class="alert alert-success mb-3">`;
+                        html += `⏱️ <strong>Tiempo total del proceso:</strong> ${totalMinutes}m ${totalSeconds}s`;
+                        
+                        // Si hay información de merge, mostrar desglose
+                        if (status.result && status.result.merge_result) {
+                            const mergeResult = status.result.merge_result;
+                            if (mergeResult.duration) {
+                                const mergeMinutes = Math.floor(mergeResult.duration / 60);
+                                const mergeSeconds = Math.floor(mergeResult.duration % 60);
+                                const decryptTime = totalTime - mergeResult.duration;
+                                const decryptMinutes = Math.floor(decryptTime / 60);
+                                const decryptSecondsVal = Math.floor(decryptTime % 60);
+                                
+                                html += `<br><small class="text-muted">`;
+                                html += `🔓 Descifrado: ${decryptMinutes}m ${decryptSecondsVal}s • `;
+                                html += `🔧 Unión: ${mergeMinutes}m ${mergeSeconds}s`;
+                                html += `</small>`;
+                            }
+                        }
+                        html += `</div>`;
                     }
                     
                     if (status.total_segments) {
