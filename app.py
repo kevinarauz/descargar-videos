@@ -68,12 +68,21 @@ def setup_file_logging():
     # Configurar logging para aplicación principal
     log_filename = os.path.join(LOG_DIRECTORY, f"m3u8_downloader_{datetime.now().strftime('%Y%m%d')}.log")
     
+    # Configurar StreamHandler con codificación UTF-8 para Windows
+    import sys
+    stream_handler = logging.StreamHandler(sys.stdout)
+    if hasattr(sys.stdout, 'reconfigure'):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+        except Exception:
+            pass
+    
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(log_filename, encoding='utf-8'),
-            logging.StreamHandler()  # También mostrar en consola
+            stream_handler  # Mostrar en consola con UTF-8
         ]
     )
     
@@ -93,7 +102,7 @@ def cleanup_old_logs():
             if os.path.getmtime(filepath) < cutoff_time:
                 try:
                     os.remove(filepath)
-                    print(f"🗑️ Log eliminado: {filename}")
+                    safe_print(f"🗑️ Log eliminado: {filename}")
                 except OSError as e:
                     print(f"Error eliminando log {filename}: {e}")
 
@@ -117,12 +126,22 @@ def log_to_file(message, level="INFO", download_id=None):
         with open(download_log_file, 'a', encoding='utf-8') as f:
             f.write(f"[{timestamp}] {level}: {message}\n")
 
+# Función segura para print con emojis en Windows
+def safe_print(message):
+    """Print seguro que maneja emojis en Windows"""
+    try:
+        print(message)
+    except UnicodeEncodeError:
+        # Fallback para Windows con codificación problemática
+        safe_message = message.encode('ascii', errors='replace').decode('ascii')
+        print(safe_message)
+
 # Funciones de logging mejorado
 def log_info(message, download_id=None):
     """Log información si el logging detallado está habilitado"""
     if ENABLE_DETAILED_LOGGING:
         timestamp = datetime.now().strftime('%H:%M:%S')
-        print(f"[{timestamp}] {message}")
+        safe_print(f"[{timestamp}] {message}")
     log_to_file(message, "INFO", download_id)
 
 def log_download_start(url, filename, mode, download_id=None):
@@ -4743,14 +4762,14 @@ def eliminar_archivo(filename):
         
         # Eliminar el archivo
         os.remove(file_path)
-        print(f"🗑️ Archivo eliminado: {file_path}")
+        safe_print(f"🗑️ Archivo eliminado: {file_path}")
         
         # También eliminar el archivo de metadatos si existe
         metadata_file = f"{file_path}.meta"
         if os.path.exists(metadata_file):
             try:
                 os.remove(metadata_file)
-                print(f"🗑️ Metadatos eliminados: {metadata_file}")
+                safe_print(f"🗑️ Metadatos eliminados: {metadata_file}")
             except Exception as meta_error:
                 print(f"Error al eliminar metadatos para {filename}: {meta_error}")
         
@@ -4866,11 +4885,11 @@ def renombrar_archivo(filename):
         if not nuevo_nombre:
             return jsonify({'success': False, 'error': 'Nuevo nombre no proporcionado.'}), 400
         
-        print(f"🔄 Renombrando '{filename}' a '{nuevo_nombre}'")
+        safe_print(f"🔄 Renombrando '{filename}' a '{nuevo_nombre}'")
         
         # Sanitizar el nuevo nombre
         nuevo_nombre_limpio = sanitize_filename(nuevo_nombre)
-        print(f"📝 Nombre sanitizado: '{nuevo_nombre_limpio}'")
+        safe_print(f"📝 Nombre sanitizado: '{nuevo_nombre_limpio}'")
         
         if not nuevo_nombre_limpio.lower().endswith('.mp4'):
             nuevo_nombre_limpio += '.mp4'
@@ -4895,7 +4914,7 @@ def renombrar_archivo(filename):
                     archivo_original = mp4_file
                     break
         
-        print(f"📂 Archivo original encontrado: {archivo_original}")
+        safe_print(f"📂 Archivo original encontrado: {archivo_original}")
         
         if not archivo_original:
             return jsonify({'success': False, 'error': f'El archivo "{filename}" no existe.'}), 404
@@ -4903,7 +4922,7 @@ def renombrar_archivo(filename):
         # El archivo renombrado debe ir en el mismo directorio que el original
         directorio_original = os.path.dirname(archivo_original)
         archivo_nuevo = os.path.join(directorio_original, nuevo_nombre_limpio)
-        print(f"📂 Archivo destino: {archivo_nuevo}")
+        safe_print(f"📂 Archivo destino: {archivo_nuevo}")
         
         if os.path.exists(archivo_nuevo):
             return jsonify({'success': False, 'error': f'Ya existe un archivo con el nombre "{nuevo_nombre_limpio}".'}), 400
@@ -4921,31 +4940,31 @@ def renombrar_archivo(filename):
         # Renombrar el archivo
         try:
             os.rename(archivo_original, archivo_nuevo)
-            print(f"✅ Archivo renombrado exitosamente")
+            safe_safe_print(f"✅ Archivo renombrado exitosamente")
         except OSError as os_error:
             error_msg = f"Error del sistema al renombrar: {str(os_error)}"
-            print(f"❌ {error_msg}")
+            safe_print(f"❌ {error_msg}")
             return jsonify({'success': False, 'error': error_msg}), 500
         
         # Renombrar también el archivo de metadatos si existe
         metadata_original = f"{archivo_original}.meta"
         metadata_nuevo = f"{archivo_nuevo}.meta"
         
-        print(f"🔍 Verificando metadatos:")
-        print(f"   📋 Archivo original: {metadata_original}")
-        print(f"   📋 Archivo nuevo: {metadata_nuevo}")
-        print(f"   📋 Existe original: {os.path.exists(metadata_original)}")
+        safe_print(f"🔍 Verificando metadatos:")
+        safe_print(f"   📋 Archivo original: {metadata_original}")
+        safe_print(f"   📋 Archivo nuevo: {metadata_nuevo}")
+        safe_print(f"   📋 Existe original: {os.path.exists(metadata_original)}")
         
         if os.path.exists(metadata_original):
             try:
-                print(f"🔄 Iniciando proceso de metadatos...")
+                safe_print(f"🔄 Iniciando proceso de metadatos...")
                 
                 # Cargar metadatos existentes
                 metadata = find_video_metadata(filename)
-                print(f"📋 Metadatos cargados: {metadata}")
+                safe_print(f"📋 Metadatos cargados: {metadata}")
                 
                 if metadata:
-                    print(f"📝 URL original: {metadata.get('url', 'NO ENCONTRADA')}")
+                    safe_print(f"📝 URL original: {metadata.get('url', 'NO ENCONTRADA')}")
                     
                     # Actualizar solo el nombre, preservando toda la demás información
                     metadata['filename'] = nuevo_nombre_limpio
@@ -4953,30 +4972,30 @@ def renombrar_archivo(filename):
                     metadata['renamed_from'] = filename
                     metadata['rename_date'] = time.strftime('%Y-%m-%dT%H:%M:%S')
                     
-                    print(f"📝 Metadatos actualizados: {metadata}")
+                    safe_print(f"📝 Metadatos actualizados: {metadata}")
                     
                     # Guardar metadatos actualizados
                     with open(metadata_nuevo, 'w', encoding='utf-8') as f:
                         import json
                         json.dump(metadata, f, ensure_ascii=False, indent=2)
                     
-                    print(f"✅ Archivo de metadatos nuevo creado: {metadata_nuevo}")
+                    safe_print(f"✅ Archivo de metadatos nuevo creado: {metadata_nuevo}")
                     
                     # Eliminar archivo de metadatos original
                     try:
                         os.remove(metadata_original)
-                        print(f"🗑️ Archivo de metadatos original eliminado: {metadata_original}")
+                        safe_print(f"🗑️ Archivo de metadatos original eliminado: {metadata_original}")
                     except Exception as delete_error:
-                        print(f"⚠️ No se pudo eliminar el archivo de metadatos original: {delete_error}")
+                        safe_print(f"⚠️ No se pudo eliminar el archivo de metadatos original: {delete_error}")
                 else:
-                    print(f"⚠️ No se pudieron cargar los metadatos de {filename}")
+                    safe_print(f"⚠️ No se pudieron cargar los metadatos de {filename}")
                     
             except Exception as meta_error:
-                print(f"⚠️ Error al actualizar metadatos: {meta_error}")
+                safe_print(f"⚠️ Error al actualizar metadatos: {meta_error}")
                 import traceback
                 print(f"Traceback completo: {traceback.format_exc()}")
         else:
-            print(f"⚠️ No existe archivo de metadatos para: {filename}")
+            safe_print(f"⚠️ No existe archivo de metadatos para: {filename}")
         
         return jsonify({
             'success': True, 
@@ -4986,7 +5005,7 @@ def renombrar_archivo(filename):
         
     except Exception as e:
         error_msg = f'Error al renombrar: {str(e)}'
-        print(f"❌ {error_msg}")
+        safe_print(f"❌ {error_msg}")
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': error_msg}), 500
@@ -5001,7 +5020,7 @@ def renombrar_descarga_activa(download_id):
         if not nuevo_nombre:
             return jsonify({'success': False, 'error': 'Nuevo nombre no proporcionado.'}), 400
         
-        print(f"🔄 Renombrando descarga activa '{download_id}' a '{nuevo_nombre}'")
+        safe_print(f"🔄 Renombrando descarga activa '{download_id}' a '{nuevo_nombre}'")
         
         # Verificar que la descarga existe
         if download_id not in multi_progress:
@@ -5011,7 +5030,7 @@ def renombrar_descarga_activa(download_id):
         
         # Sanitizar el nuevo nombre
         nuevo_nombre_limpio = sanitize_filename(nuevo_nombre)
-        print(f"📝 Nombre sanitizado: '{nuevo_nombre_limpio}'")
+        safe_print(f"📝 Nombre sanitizado: '{nuevo_nombre_limpio}'")
         
         if not nuevo_nombre_limpio.lower().endswith('.mp4'):
             nuevo_nombre_limpio += '.mp4'
@@ -5040,18 +5059,18 @@ def renombrar_descarga_activa(download_id):
                     old_output_path = downloader.output_file
                     new_output_path = os.path.join(static_dir, nuevo_nombre_limpio)
                     downloader.output_file = new_output_path
-                    print(f"✅ Actualizado output_file del downloader: {new_output_path}")
+                    safe_print(f"✅ Actualizado output_file del downloader: {new_output_path}")
                     
                     # Si ya existe un archivo temporal parcial, renombrarlo
                     if os.path.exists(old_output_path) and old_output_path != new_output_path:
                         try:
                             os.rename(old_output_path, new_output_path)
-                            print(f"✅ Archivo temporal renombrado de {old_output_path} a {new_output_path}")
+                            safe_print(f"✅ Archivo temporal renombrado de {old_output_path} a {new_output_path}")
                         except OSError as rename_error:
-                            print(f"⚠️ No se pudo renombrar archivo temporal: {rename_error}")
+                            safe_print(f"⚠️ No se pudo renombrar archivo temporal: {rename_error}")
                             
             except Exception as downloader_error:
-                print(f"⚠️ Error al actualizar downloader: {downloader_error}")
+                safe_print(f"⚠️ Error al actualizar downloader: {downloader_error}")
         
         # Guardar el estado actualizado
         save_download_state()
@@ -5078,21 +5097,21 @@ def renombrar_descarga_activa(download_id):
                         # Preservar datos existentes y actualizar con nuevos
                         existing_metadata.update(metadata)
                         metadata = existing_metadata
-                        print(f"📋 Metadatos existentes preservados y actualizados")
+                        safe_print(f"📋 Metadatos existentes preservados y actualizados")
                 except Exception as load_error:
-                    print(f"⚠️ Error al cargar metadatos existentes: {load_error}")
+                    safe_print(f"⚠️ Error al cargar metadatos existentes: {load_error}")
             
             # Guardar metadatos actualizados
             with open(metadata_nuevo, 'w', encoding='utf-8') as f:
                 import json
                 json.dump(metadata, f, ensure_ascii=False, indent=2)
             
-            print(f"✅ Metadatos guardados: {metadata_nuevo}")
+            safe_print(f"✅ Metadatos guardados: {metadata_nuevo}")
             
         except Exception as meta_error:
-            print(f"⚠️ Error al actualizar metadatos de descarga activa: {meta_error}")
+            safe_print(f"⚠️ Error al actualizar metadatos de descarga activa: {meta_error}")
         
-        print(f"✅ Descarga activa renombrada exitosamente a: {nuevo_nombre_limpio}")
+        safe_print(f"✅ Descarga activa renombrada exitosamente a: {nuevo_nombre_limpio}")
         
         return jsonify({
             'success': True, 
@@ -5103,7 +5122,7 @@ def renombrar_descarga_activa(download_id):
         
     except Exception as e:
         error_msg = f'Error al renombrar descarga activa: {str(e)}'
-        print(f"❌ {error_msg}")
+        safe_print(f"❌ {error_msg}")
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': error_msg}), 500
@@ -5445,7 +5464,7 @@ def analizar_m3u8():
         if not is_valid_m3u8_url(m3u8_url):
             return jsonify({'success': False, 'error': f'URL M3U8 no válida: {m3u8_url}'}), 400
         
-        print(f"🔍 Analizando contenido M3U8: {m3u8_url}")
+        safe_print(f"🔍 Analizando contenido M3U8: {m3u8_url}")
         
         # Crear downloader temporal solo para análisis
         temp_downloader = M3U8Downloader(
@@ -5454,7 +5473,7 @@ def analizar_m3u8():
             max_workers=1,  # Solo 1 worker para análisis rápido
             temp_dir='temp_analysis',
             download_id='analysis',
-            log_function=lambda msg: print(f"📋 Análisis: {msg}")
+            log_function=lambda msg: safe_print(f"📋 Análisis: {msg}")
         )
         
         # Intentar obtener la lista de segmentos para detectar problemas
@@ -5469,7 +5488,7 @@ def analizar_m3u8():
             
             # Intentar descargar el primer segmento para verificar si está encriptado
             if len(segment_urls) > 0:
-                print(f"🧪 Probando primer segmento: {segment_urls[0]}")
+                safe_print(f"🧪 Probando primer segmento: {segment_urls[0]}")
                 
                 # Crear directorio temporal si no existe
                 os.makedirs('temp_analysis', exist_ok=True)
@@ -5519,7 +5538,7 @@ def analizar_m3u8():
                 })
         
         except Exception as download_error:
-            print(f"⚠️ Error en análisis de descarga: {download_error}")
+            safe_print(f"⚠️ Error en análisis de descarga: {download_error}")
             return jsonify({
                 'success': False,
                 'error': f'No se pudo analizar el contenido: {str(download_error)}',
@@ -5527,7 +5546,7 @@ def analizar_m3u8():
             })
         
     except Exception as e:
-        print(f"❌ Error en /analizar: {str(e)}")
+        safe_print(f"❌ Error en /analizar: {str(e)}")
         return jsonify({'success': False, 'error': f'Error interno del servidor: {str(e)}'}), 500
 
 @app.route('/api/active_downloads', methods=['GET'])
@@ -5641,18 +5660,18 @@ def get_historial():
                         if metadata:
                             url_asociada = metadata.get('url')
                             fecha_descarga = metadata.get('download_date')
-                            print(f"📋 Metadata cargada para {nombre_archivo}: URL={url_asociada}")
+                            safe_print(f"📋 Metadata cargada para {nombre_archivo}: URL={url_asociada}")
                         else:
-                            print(f"⚠️ No se pudo cargar metadata para {nombre_archivo}")
+                            safe_print(f"⚠️ No se pudo cargar metadata para {nombre_archivo}")
                     except Exception as meta_error:
-                        print(f"❌ Error cargando metadata para {nombre_archivo}: {meta_error}")
+                        safe_print(f"❌ Error cargando metadata para {nombre_archivo}: {meta_error}")
                     
                     # Si no se encontró en metadata, buscar en descargas activas como fallback
                     if not url_asociada:
                         for download_id, progress in multi_progress.items():
                             if progress.get('output_file') == nombre_archivo:
                                 url_asociada = progress.get('url')
-                                print(f"📥 URL encontrada en multi_progress para {nombre_archivo}: {url_asociada}")
+                                safe_print(f"📥 URL encontrada en multi_progress para {nombre_archivo}: {url_asociada}")
                                 break
                     
                     # Usar fecha de descarga de metadata si está disponible, sino fecha de modificación
@@ -5665,9 +5684,9 @@ def get_historial():
                             dt_descarga = datetime.fromisoformat(fecha_descarga.replace('Z', '+00:00').replace('+00:00', ''))
                             fecha_para_mostrar = dt_descarga.strftime('%d/%m/%Y %H:%M')
                             timestamp_para_ordenar = int(dt_descarga.timestamp())
-                            print(f"📅 Usando fecha de metadata para {nombre_archivo}: {fecha_para_mostrar}")
+                            safe_print(f"📅 Usando fecha de metadata para {nombre_archivo}: {fecha_para_mostrar}")
                         except Exception as date_error:
-                            print(f"⚠️ Error parseando fecha de metadata: {date_error}")
+                            safe_print(f"⚠️ Error parseando fecha de metadata: {date_error}")
                     
                     # Calcular la ruta relativa desde static para el enlace de descarga
                     ruta_relativa = os.path.relpath(archivo, 'static').replace('\\', '/')
@@ -5682,17 +5701,17 @@ def get_historial():
                         'url': url_asociada
                     })
                     
-                    print(f"✅ Procesado {nombre_archivo} - URL: {url_asociada}")
+                    safe_print(f"✅ Procesado {nombre_archivo} - URL: {url_asociada}")
                     
                 except Exception as e:
-                    print(f"❌ Error procesando archivo {archivo}: {e}")
+                    safe_print(f"❌ Error procesando archivo {archivo}: {e}")
         
         # Ordenar por fecha de modificación (más recientes primero)
         archivos.sort(key=lambda x: x['fecha_timestamp'], reverse=True)
         
-        print(f"📊 Historial generado: {len(archivos)} archivos")
+        safe_print(f"📊 Historial generado: {len(archivos)} archivos")
         for archivo in archivos:
-            print(f"  📄 {archivo['archivo']} - URL: {archivo['url']}")
+            safe_print(f"  📄 {archivo['archivo']} - URL: {archivo['url']}")
         
         return jsonify({
             'success': True,
@@ -5700,7 +5719,7 @@ def get_historial():
         })
     except Exception as e:
         error_msg = f"Error generando historial: {str(e)}"
-        print(f"❌ {error_msg}")
+        safe_print(f"❌ {error_msg}")
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': error_msg}), 500
