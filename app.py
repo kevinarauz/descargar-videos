@@ -10,6 +10,16 @@ from subprocess import run as subprocess_run, CalledProcessError
 from flask import Flask, render_template_string, request, send_file, jsonify
 from m3u8_downloader import M3U8Downloader
 
+# Importar módulos DRM para investigación académica
+try:
+    from drm_research_module import DRMResearchModule
+    from drm_decryption_module import DRMDecryptionModule, decrypt_drm_content
+    DRM_AVAILABLE = True
+    print("Modulos DRM disponibles para investigacion academica")
+except ImportError as e:
+    DRM_AVAILABLE = False
+    print(f"Modulos DRM no disponibles: {e}")
+
 # ============================================================================
 # 🔧 CONFIGURACIÓN PERSONAL - Ajusta estos valores según tus necesidades
 # ============================================================================
@@ -1220,6 +1230,9 @@ default_html = '''
             <button type="button" class="btn btn-info d-flex align-items-center gap-2" onclick="playOnlyM3U8()" title="Reproducir sin descargar (útil para contenido encriptado)">
               <span>👀</span> Solo Ver
             </button>
+            <button type="button" class="btn btn-warning d-flex align-items-center gap-2" onclick="analyzeDRM()" title="Analizar protección DRM para investigación académica">
+              <span>🔍</span> Analizar DRM
+            </button>
             <button type="button" class="btn btn-outline-light d-flex align-items-center gap-2" onclick="addToQueueFromForm()">
               <span>➕</span> Añadir a Cola
             </button>
@@ -1231,6 +1244,15 @@ default_html = '''
       <div id="metadata-container" class="form-container" style="display: none;">
         <h5 class="fw-semibold mb-3">📋 Información del Video M3U8</h5>
         <div id="metadata-content"></div>
+      </div>
+      
+      <!-- Área de análisis DRM -->
+      <div id="drm-container" class="form-container" style="display: none;">
+        <h5 class="fw-semibold mb-3">🔍 Análisis DRM - Investigación Académica</h5>
+        <div class="alert alert-info">
+          <small><strong>Nota:</strong> Esta herramienta está destinada exclusivamente para investigación académica y análisis de seguridad en entornos controlados.</small>
+        </div>
+        <div id="drm-content"></div>
       </div>
       
       <div id="video-container"></div>
@@ -3843,6 +3865,213 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// ============================================================================
+// Funciones DRM para investigación académica
+// ============================================================================
+
+function analyzeDRM() {
+    const urlInput = document.getElementById('url');
+    const url = urlInput.value.trim();
+    
+    if (!url) {
+        showNotification('Por favor ingresa una URL M3U8 válida', 'warning');
+        return;
+    }
+    
+    const drmContainer = document.getElementById('drm-container');
+    const drmContent = document.getElementById('drm-content');
+    
+    // Mostrar contenedor DRM
+    drmContainer.style.display = 'block';
+    drmContent.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Analizando...</span></div><p class="mt-2">Analizando protección DRM...</p></div>';
+    
+    // Hacer análisis DRM
+    fetch('/api/drm/analyze', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: url })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            displayDRMResults(data);
+        } else {
+            drmContent.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+        }
+    })
+    .catch(error => {
+        drmContent.innerHTML = `<div class="alert alert-danger">Error de conexión: ${error.message}</div>`;
+    });
+}
+
+function displayDRMResults(data) {
+    const drmContent = document.getElementById('drm-content');
+    
+    let html = '<div class="row">';
+    
+    // Resultados del análisis
+    html += '<div class="col-md-6">';
+    html += '<div class="card">';
+    html += '<div class="card-header"><h6 class="mb-0">📊 Resultados del Análisis</h6></div>';
+    html += '<div class="card-body">';
+    
+    if (data.drm_detected) {
+        html += '<div class="alert alert-warning"><strong>🔒 DRM Detectado</strong><br>';
+        html += `Métodos de encriptación: ${data.encryption_methods.join(', ')}</div>`;
+    } else {
+        html += '<div class="alert alert-success"><strong>🔓 Sin DRM</strong><br>No se detectó protección DRM</div>';
+    }
+    
+    html += `<p><strong>Total de segmentos:</strong> ${data.total_segments}</p>`;
+    html += '</div></div></div>';
+    
+    // Acciones disponibles
+    html += '<div class="col-md-6">';
+    html += '<div class="card">';
+    html += '<div class="card-header"><h6 class="mb-0">⚡ Acciones Disponibles</h6></div>';
+    html += '<div class="card-body">';
+    
+    if (data.drm_detected) {
+        html += '<div class="d-grid gap-2">';
+        html += `<button class="btn btn-warning" onclick="startDRMDecryption('${data.analysis_file}')">🔓 Descifrar DRM</button>`;
+        html += `<button class="btn btn-outline-secondary" onclick="showAnalysisReport('${data.academic_report}')">📋 Ver Reporte Académico</button>`;
+        html += '</div>';
+    } else {
+        html += '<div class="alert alert-info">El contenido no requiere descifrado DRM.<br>Puedes descargarlo normalmente.</div>';
+    }
+    
+    html += '</div></div></div>';
+    html += '</div>';
+    
+    // Área para progreso de descifrado
+    html += '<div id="drm-decrypt-progress" style="display: none;" class="mt-3">';
+    html += '<div class="card">';
+    html += '<div class="card-header"><h6 class="mb-0">⚙️ Progreso de Descifrado</h6></div>';
+    html += '<div class="card-body" id="drm-decrypt-content"></div>';
+    html += '</div></div>';
+    
+    drmContent.innerHTML = html;
+}
+
+function startDRMDecryption(analysisFile) {
+    const progressDiv = document.getElementById('drm-decrypt-progress');
+    const contentDiv = document.getElementById('drm-decrypt-content');
+    
+    progressDiv.style.display = 'block';
+    contentDiv.innerHTML = '<div class="text-center"><div class="spinner-border text-warning" role="status"></div><p class="mt-2">Iniciando descifrado DRM...</p></div>';
+    
+    // Iniciar descifrado
+    fetch('/api/drm/decrypt', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+            analysis_file: analysisFile,
+            max_workers: 20 
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Monitorear progreso
+            monitorDRMProgress(data.decrypt_id);
+        } else {
+            contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+        }
+    })
+    .catch(error => {
+        contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    });
+}
+
+function monitorDRMProgress(decryptId) {
+    const contentDiv = document.getElementById('drm-decrypt-content');
+    
+    const checkProgress = () => {
+        fetch(`/api/drm/status/${decryptId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const status = data.status;
+                
+                if (status.status === 'processing') {
+                    contentDiv.innerHTML = `
+                        <div class="text-center">
+                            <div class="spinner-border text-warning" role="status"></div>
+                            <p class="mt-2">Descifrando contenido DRM...</p>
+                            <small class="text-muted">ID: ${decryptId}</small>
+                        </div>
+                    `;
+                    setTimeout(checkProgress, 2000);
+                    
+                } else if (status.status === 'completed') {
+                    let html = '<div class="alert alert-success"><strong>🎉 Descifrado Completado</strong></div>';
+                    
+                    if (status.total_segments) {
+                        html += '<div class="row text-center">';
+                        html += `<div class="col-3"><strong>${status.total_segments}</strong><br><small>Total</small></div>`;
+                        html += `<div class="col-3"><strong>${status.decrypted_successfully}</strong><br><small>Descifrados</small></div>`;
+                        html += `<div class="col-3"><strong>${status.decryption_failed}</strong><br><small>Fallos</small></div>`;
+                        html += `<div class="col-3"><strong>${status.keys_obtained}</strong><br><small>Claves</small></div>`;
+                        html += '</div>';
+                    }
+                    
+                    html += '<div class="mt-3">';
+                    html += '<div class="alert alert-info">';
+                    html += '<strong>📁 Archivos generados:</strong><br>';
+                    html += '• <code>decrypted_content/decrypted_segments/</code> - Segmentos descifrados<br>';
+                    html += '• <code>decrypted_content/keys/</code> - Claves de descifrado<br>';
+                    html += '• <code>decrypted_content/analysis/</code> - Reportes académicos';
+                    html += '</div></div>';
+                    
+                    contentDiv.innerHTML = html;
+                    
+                } else if (status.status === 'failed') {
+                    contentDiv.innerHTML = `<div class="alert alert-danger"><strong>❌ Error en descifrado:</strong><br>${status.error || 'Error desconocido'}</div>`;
+                }
+            }
+        })
+        .catch(error => {
+            contentDiv.innerHTML = `<div class="alert alert-danger">Error monitoreando progreso: ${error.message}</div>`;
+        });
+    };
+    
+    checkProgress();
+}
+
+function showAnalysisReport(reportPath) {
+    if (reportPath) {
+        const newWindow = window.open('', '_blank');
+        newWindow.document.write('<h3>Reporte Académico DRM</h3><p>Archivo: ' + reportPath + '</p>');
+    } else {
+        showNotification('Reporte no disponible', 'warning');
+    }
+}
+
+// Verificar disponibilidad DRM al cargar
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/drm/check')
+    .then(response => response.json())
+    .then(data => {
+        if (!data.drm_available) {
+            // Deshabilitar botón DRM si no está disponible
+            const drmBtn = document.querySelector('[onclick="analyzeDRM()"]');
+            if (drmBtn) {
+                drmBtn.disabled = true;
+                drmBtn.title = 'Módulos DRM no disponibles';
+                drmBtn.innerHTML = '<span>🔍</span> DRM No Disponible';
+            }
+        }
+    })
+    .catch(error => {
+        console.log('Error verificando DRM:', error);
+    });
+});
+
 </script>
 </body>
 </html>
@@ -5829,6 +6058,171 @@ def get_log_files():
         return jsonify({'success': True, 'files': log_files})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+# ============================================================================
+# ENDPOINTS DRM - Para investigación académica
+# ============================================================================
+
+@app.route('/api/drm/analyze', methods=['POST'])
+def analyze_drm_endpoint():
+    """Analiza el contenido M3U8 en busca de protección DRM"""
+    if not DRM_AVAILABLE:
+        return jsonify({
+            'success': False, 
+            'error': 'Módulos DRM no disponibles'
+        })
+    
+    try:
+        data = request.get_json()
+        url = data.get('url')
+        
+        if not url:
+            return jsonify({'success': False, 'error': 'URL requerida'})
+        
+        log_to_file(f"Iniciando analisis DRM para: {url}")
+        
+        # Crear instancia del módulo de investigación DRM
+        drm_module = DRMResearchModule()
+        
+        # Realizar análisis
+        analysis_result = drm_module.analyze_m3u8_drm(url)
+        
+        if analysis_result['success']:
+            # Los datos están directamente en analysis_result
+            manifest_info = analysis_result.get('manifest_info', {})
+            
+            # Preparar respuesta
+            response_data = {
+                'success': True,
+                'drm_detected': len(manifest_info.get('encryption_keys', [])) > 0,
+                'encryption_methods': [key.get('method') for key in manifest_info.get('encryption_keys', [])],
+                'total_segments': len(manifest_info.get('segments', [])),
+                'analysis_data': analysis_result,  # Pasar todos los datos de análisis
+                'academic_findings': analysis_result.get('academic_findings', [])
+            }
+            
+            log_to_file(f"Analisis DRM completado - DRM detectado: {response_data['drm_detected']}")
+            
+            return jsonify(response_data)
+        else:
+            return jsonify({
+                'success': False,
+                'error': analysis_result.get('error', 'Error en análisis DRM')
+            })
+            
+    except Exception as e:
+        log_to_file(f"Error en analisis DRM: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/drm/decrypt', methods=['POST'])
+def decrypt_drm_endpoint():
+    """Descifra contenido DRM para investigación académica"""
+    if not DRM_AVAILABLE:
+        return jsonify({
+            'success': False, 
+            'error': 'Módulos DRM no disponibles'
+        })
+    
+    try:
+        data = request.get_json()
+        analysis_file = data.get('analysis_file')
+        max_workers = data.get('max_workers', 20)
+        
+        if not analysis_file:
+            return jsonify({'success': False, 'error': 'Archivo de análisis requerido'})
+        
+        # Verificar que el archivo existe
+        if not os.path.exists(analysis_file):
+            return jsonify({'success': False, 'error': 'Archivo de análisis no encontrado'})
+        
+        log_to_file(f"Iniciando descifrado DRM desde: {analysis_file}")
+        
+        # Generar ID único para el proceso de descifrado
+        decrypt_id = str(uuid.uuid4())[:8]
+        
+        # Ejecutar descifrado en hilo separado
+        def decrypt_process():
+            try:
+                result = decrypt_drm_content(analysis_file, max_workers)
+                
+                # Guardar resultado en variable global para consulta
+                multi_progress[f"drm_{decrypt_id}"] = {
+                    'id': decrypt_id,
+                    'type': 'drm_decrypt',
+                    'status': 'completed' if result['success'] else 'failed',
+                    'result': result,
+                    'timestamp': time.time()
+                }
+                
+                log_to_file(f"Descifrado DRM completado - ID: {decrypt_id}")
+                
+            except Exception as e:
+                multi_progress[f"drm_{decrypt_id}"] = {
+                    'id': decrypt_id,
+                    'type': 'drm_decrypt',
+                    'status': 'failed',
+                    'error': str(e),
+                    'timestamp': time.time()
+                }
+                log_to_file(f"Error en descifrado DRM: {str(e)}")
+        
+        # Iniciar proceso en hilo separado
+        thread = threading.Thread(target=decrypt_process)
+        thread.daemon = True
+        thread.start()
+        
+        # Guardar estado inicial
+        multi_progress[f"drm_{decrypt_id}"] = {
+            'id': decrypt_id,
+            'type': 'drm_decrypt',
+            'status': 'processing',
+            'analysis_file': analysis_file,
+            'max_workers': max_workers,
+            'timestamp': time.time()
+        }
+        
+        return jsonify({
+            'success': True,
+            'decrypt_id': decrypt_id,
+            'message': 'Descifrado DRM iniciado'
+        })
+        
+    except Exception as e:
+        log_to_file(f"Error iniciando descifrado DRM: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/drm/status/<decrypt_id>', methods=['GET'])
+def get_drm_status(decrypt_id):
+    """Obtiene el estado del proceso de descifrado DRM"""
+    drm_key = f"drm_{decrypt_id}"
+    
+    if drm_key in multi_progress:
+        status_data = multi_progress[drm_key].copy()
+        
+        # Agregar información adicional si está disponible
+        if status_data.get('status') == 'completed' and 'result' in status_data:
+            result = status_data['result']
+            if 'stats' in result:
+                stats = result['stats']
+                status_data.update({
+                    'total_segments': stats.get('total_segments', 0),
+                    'decrypted_successfully': stats.get('decrypted_successfully', 0),
+                    'decryption_failed': stats.get('decryption_failed', 0),
+                    'keys_obtained': stats.get('keys_obtained', 0)
+                })
+        
+        return jsonify({'success': True, 'status': status_data})
+    else:
+        return jsonify({'success': False, 'error': 'ID de descifrado no encontrado'})
+
+@app.route('/api/drm/check', methods=['GET'])
+def check_drm_availability():
+    """Verifica si los módulos DRM están disponibles"""
+    return jsonify({
+        'success': True,
+        'drm_available': DRM_AVAILABLE,
+        'message': 'Módulos DRM disponibles para investigación académica' if DRM_AVAILABLE else 'Módulos DRM no disponibles'
+    })
 
 if __name__ == '__main__':
     # Inicializar sistema de logging
