@@ -3936,7 +3936,7 @@ function displayDRMResults(data) {
     
     if (data.drm_detected) {
         html += '<div class="d-grid gap-2">';
-        html += `<button class="btn btn-warning" onclick="startDRMDecryption('${data.analysis_file}')">🔓 Descifrar DRM</button>`;
+        html += `<button class="btn btn-warning" onclick="startDRMDecryption()">🔓 Descifrar DRM</button>`;
         html += `<button class="btn btn-outline-secondary" onclick="showAnalysisReport('${data.academic_report}')">📋 Ver Reporte Académico</button>`;
         html += '</div>';
     } else {
@@ -3956,21 +3956,20 @@ function displayDRMResults(data) {
     drmContent.innerHTML = html;
 }
 
-function startDRMDecryption(analysisFile) {
+function startDRMDecryption() {
     const progressDiv = document.getElementById('drm-decrypt-progress');
     const contentDiv = document.getElementById('drm-decrypt-content');
     
     progressDiv.style.display = 'block';
     contentDiv.innerHTML = '<div class="text-center"><div class="spinner-border text-warning" role="status"></div><p class="mt-2">Iniciando descifrado DRM...</p></div>';
     
-    // Iniciar descifrado
+    // Iniciar descifrado (el backend encontrará automáticamente el análisis más reciente)
     fetch('/api/drm/decrypt', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-            analysis_file: analysisFile,
             max_workers: 20 
         })
     })
@@ -6124,12 +6123,24 @@ def decrypt_drm_endpoint():
         })
     
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         analysis_file = data.get('analysis_file')
         max_workers = data.get('max_workers', 20)
         
+        # Si no se especifica archivo, buscar el más reciente
         if not analysis_file:
-            return jsonify({'success': False, 'error': 'Archivo de análisis requerido'})
+            analysis_dir = "drm_research/analysis"
+            if os.path.exists(analysis_dir):
+                json_files = [f for f in os.listdir(analysis_dir) if f.startswith('drm_analysis_') and f.endswith('.json')]
+                if json_files:
+                    # Ordenar por timestamp en el nombre (más reciente primero)
+                    json_files.sort(reverse=True)
+                    analysis_file = os.path.join(analysis_dir, json_files[0])
+                    log_to_file(f"Usando análisis más reciente: {analysis_file}")
+                else:
+                    return jsonify({'success': False, 'error': 'No se encontraron archivos de análisis DRM'})
+            else:
+                return jsonify({'success': False, 'error': 'Directorio de análisis DRM no encontrado'})
         
         # Verificar que el archivo existe
         if not os.path.exists(analysis_file):
