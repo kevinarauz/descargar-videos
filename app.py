@@ -4011,7 +4011,7 @@ function monitorDRMProgress(decryptId) {
                     let html = '<div class="alert alert-success"><strong>🎉 Descifrado Completado</strong></div>';
                     
                     if (status.total_segments) {
-                        html += '<div class="row text-center">';
+                        html += '<div class="row text-center mb-3">';
                         html += `<div class="col-3"><strong>${status.total_segments}</strong><br><small>Total</small></div>`;
                         html += `<div class="col-3"><strong>${status.decrypted_successfully}</strong><br><small>Descifrados</small></div>`;
                         html += `<div class="col-3"><strong>${status.decryption_failed}</strong><br><small>Fallos</small></div>`;
@@ -4019,12 +4019,34 @@ function monitorDRMProgress(decryptId) {
                         html += '</div>';
                     }
                     
+                    // Información de unión de segmentos
+                    if (status.merge_result) {
+                        if (status.merge_result.success) {
+                            html += '<div class="alert alert-success">';
+                            html += '<strong>🎬 Video Final Creado</strong><br>';
+                            html += `📁 Archivo: <code>${status.merge_result.output_file}</code><br>`;
+                            html += `📊 Segmentos unidos: ${status.merge_result.segments_merged}<br>`;
+                            html += `💾 Tamaño: ${(status.merge_result.final_size / (1024*1024)).toFixed(1)} MB<br>`;
+                            html += `⏱️ Tiempo de unión: ${status.merge_result.duration.toFixed(1)}s`;
+                            html += '</div>';
+                        } else {
+                            html += '<div class="alert alert-warning">';
+                            html += '<strong>⚠️ Descifrado OK - Error en Unión</strong><br>';
+                            html += `Error: ${status.merge_result.error}<br>`;
+                            html += 'Los segmentos descifrados están disponibles individualmente.';
+                            html += '</div>';
+                        }
+                    }
+                    
                     html += '<div class="mt-3">';
                     html += '<div class="alert alert-info">';
                     html += '<strong>📁 Archivos generados:</strong><br>';
                     html += '• <code>decrypted_content/decrypted_segments/</code> - Segmentos descifrados<br>';
                     html += '• <code>decrypted_content/keys/</code> - Claves de descifrado<br>';
-                    html += '• <code>decrypted_content/analysis/</code> - Reportes académicos';
+                    html += '• <code>decrypted_content/analysis/</code> - Reportes académicos<br>';
+                    if (status.merge_result && status.merge_result.success) {
+                        html += `• <code>${status.merge_result.output_file}</code> - Video final MP4`;
+                    }
                     html += '</div></div>';
                     
                     contentDiv.innerHTML = html;

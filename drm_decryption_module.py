@@ -330,10 +330,26 @@ class DRMDecryptionModule:
         # Generar reporte
         self.generate_decryption_report(results)
         
+        # Si el descifrado fue exitoso, unir segmentos automáticamente
+        merge_result = None
+        if self.decryption_stats['decrypted_successfully'] > 0:
+            safe_print("\n" + "="*50)
+            safe_print("INICIANDO UNIÓN AUTOMÁTICA DE SEGMENTOS")
+            safe_print("="*50)
+            
+            merge_result = self.merge_decrypted_segments()
+            
+            if merge_result['success']:
+                safe_print(f"\n🎉 PROCESO COMPLETO - VIDEO LISTO PARA USO")
+                safe_print(f"📁 Archivo final: {merge_result['output_file']}")
+            else:
+                safe_print(f"\n⚠️ Descifrado exitoso pero fallo en unión: {merge_result['error']}")
+        
         return {
             'success': True,
             'stats': self.decryption_stats,
-            'results': results
+            'results': results,
+            'merge_result': merge_result
         }
     
     def generate_decryption_report(self, results: List[Dict]):
@@ -416,11 +432,167 @@ class DRMDecryptionModule:
                 f.write("• RELEVANCIA: Límites de técnicas de descifrado estudiadas\\n")
         
         safe_print(f"Reporte guardado: {report_file}")
+    
+    def merge_decrypted_segments(self, output_filename: str = None) -> Dict:
+        """
+        Une todos los segmentos descifrados en un video MP4 final usando FFmpeg
+        
+        Args:
+            output_filename: Nombre del archivo de salida (opcional)
+            
+        Returns:
+            Dict con resultado de la operación de unión
+        """
+        safe_print("\nINICIANDO UNIÓN DE SEGMENTOS DESCIFRADOS")
+        safe_print("=" * 45)
+        
+        merge_result = {
+            'success': False,
+            'output_file': None,
+            'segments_merged': 0,
+            'final_size': 0,
+            'duration': 0,
+            'error': None
+        }
+        
+        try:
+            import subprocess
+            
+            # Directorio de segmentos descifrados
+            decrypted_dir = os.path.join(self.output_dir, "decrypted_segments")
+            
+            if not os.path.exists(decrypted_dir):
+                merge_result['error'] = "Directorio de segmentos descifrados no encontrado"
+                return merge_result
+            
+            # Buscar archivos .ts descifrados
+            segment_files = [f for f in os.listdir(decrypted_dir) if f.endswith('.ts')]
+            segment_files.sort()  # Ordenar por nombre
+            
+            if not segment_files:
+                merge_result['error'] = "No se encontraron segmentos descifrados para unir"
+                return merge_result
+            
+            safe_print(f"Encontrados {len(segment_files)} segmentos para unir")
+            
+            # Generar nombre de archivo de salida
+            if not output_filename:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_filename = f"video_descifrado_{timestamp}.mp4"
+            
+            output_path = os.path.join(self.output_dir, output_filename)
+            
+            # Crear archivo de lista para FFmpeg
+            filelist_path = os.path.join(self.output_dir, "segments_list.txt")
+            with open(filelist_path, 'w', encoding='utf-8') as f:
+                for segment_file in segment_files:
+                    segment_path = os.path.join(decrypted_dir, segment_file)
+                    # Usar rutas absolutas y escapar backslashes para Windows
+                    abs_path = os.path.abspath(segment_path).replace('\\', '/')
+                    f.write(f"file '{abs_path}'\n")
+            
+            safe_print(f"Lista de segmentos creada: {filelist_path}")
+            safe_print(f"Archivo de salida: {output_path}")
+            safe_print("Ejecutando FFmpeg para unir segmentos...")
+            
+            # Comando FFmpeg para concatenar segmentos
+            ffmpeg_cmd = [
+                'ffmpeg',
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', filelist_path,
+                '-c', 'copy',  # Copiar sin recodificar
+                '-y',  # Sobrescribir archivo de salida
+                output_path
+            ]
+            
+            # Ejecutar FFmpeg
+            start_time = datetime.now()
+            result = subprocess.run(
+                ffmpeg_cmd,
+                capture_output=True,
+                text=True,
+                timeout=600  # Timeout de 10 minutos
+            )
+            end_time = datetime.now()
+            
+            merge_duration = (end_time - start_time).total_seconds()
+            
+            if result.returncode == 0:
+                # Unión exitosa
+                if os.path.exists(output_path):
+                    file_size = os.path.getsize(output_path)
+                    
+                    merge_result.update({
+                        'success': True,
+                        'output_file': output_path,
+                        'segments_merged': len(segment_files),
+                        'final_size': file_size,
+                        'duration': merge_duration
+                    })
+                    
+                    safe_print(f"✅ UNIÓN COMPLETADA EXITOSAMENTE")
+                    safe_print(f"Archivo final: {output_path}")
+                    safe_print(f"Segmentos unidos: {len(segment_files)}")
+                    safe_print(f"Tamaño final: {file_size / (1024*1024):.1f} MB")
+                    safe_print(f"Tiempo de unión: {merge_duration:.1f} segundos")
+                    
+                    # Limpiar archivo temporal
+                    if os.path.exists(filelist_path):
+                        os.remove(filelist_path)
+                else:
+                    merge_result['error'] = "Archivo de salida no fue creado por FFmpeg"
+            else:
+                # Error en FFmpeg
+                error_msg = result.stderr if result.stderr else "Error desconocido en FFmpeg"
+                merge_result['error'] = f"FFmpeg falló: {error_msg}"
+                safe_print(f"❌ Error en FFmpeg: {error_msg}")
+                
+        except subprocess.TimeoutExpired:
+            merge_result['error'] = "Timeout en la unión de segmentos (>10 min)"
+            safe_print("❌ Timeout en la unión de segmentos")
+        except Exception as e:
+            merge_result['error'] = f"Error durante la unión: {str(e)}"
+            safe_print(f"❌ Error durante la unión: {str(e)}")
+        
+        return merge_result
 
 def decrypt_drm_content(analysis_file: str, max_workers: int = 20) -> Dict:
-    """Función de conveniencia para descifrado completo"""
+    """Función de conveniencia para descifrado completo con unión automática"""
     decryptor = DRMDecryptionModule(analysis_file)
     return decryptor.decrypt_all_segments(max_workers)
+
+def decrypt_and_merge_drm_content(analysis_file: str, output_filename: str = None, max_workers: int = 20) -> Dict:
+    """
+    Función completa: descifra contenido DRM y une segmentos en video final
+    
+    Args:
+        analysis_file: Archivo de análisis DRM
+        output_filename: Nombre del archivo de salida (opcional)
+        max_workers: Número de workers para descifrado paralelo
+        
+    Returns:
+        Dict con resultados completos del proceso
+    """
+    decryptor = DRMDecryptionModule(analysis_file)
+    
+    # Descifrar todos los segmentos
+    decrypt_result = decryptor.decrypt_all_segments(max_workers)
+    
+    # Si se especificó un nombre diferente para el archivo final, hacer unión manual
+    if output_filename and decrypt_result['success'] and decrypt_result['merge_result']['success']:
+        # Renombrar archivo final
+        current_file = decrypt_result['merge_result']['output_file']
+        new_file = os.path.join(os.path.dirname(current_file), output_filename)
+        
+        try:
+            os.rename(current_file, new_file)
+            decrypt_result['merge_result']['output_file'] = new_file
+            safe_print(f"Video final renombrado a: {new_file}")
+        except Exception as e:
+            safe_print(f"Error renombrando archivo: {e}")
+    
+    return decrypt_result
 
 # Script principal
 if __name__ == "__main__":
