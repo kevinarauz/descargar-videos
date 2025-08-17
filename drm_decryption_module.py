@@ -584,7 +584,7 @@ class DRMDecryptionModule:
             safe_print(f"Archivo de salida: {output_path}")
             safe_print("Ejecutando FFmpeg para unir segmentos...")
             
-            # Comando FFmpeg para concatenar segmentos con configuración mejorada
+            # Comando FFmpeg para concatenar segmentos con configuración mejorada y progreso
             ffmpeg_cmd = [
                 'ffmpeg',
                 '-f', 'concat',
@@ -593,18 +593,83 @@ class DRMDecryptionModule:
                 '-c', 'copy',  # Copiar sin recodificar
                 '-avoid_negative_ts', 'make_zero',  # Manejar timestamps negativos
                 '-fflags', '+genpts',  # Generar timestamps
+                '-progress', 'pipe:1',  # Enviar progreso a stdout
+                '-v', 'warning',  # Reducir verbosidad
                 '-y',  # Sobrescribir archivo de salida
                 output_path
             ]
             
-            # Ejecutar FFmpeg
+            # Ejecutar FFmpeg con monitoreo de progreso
             start_time = datetime.now()
-            result = subprocess.run(
-                ffmpeg_cmd,
-                capture_output=True,
-                text=True,
-                timeout=600  # Timeout de 10 minutos
-            )
+            merge_start_timestamp = start_time.timestamp()
+            
+            try:
+                process = subprocess.Popen(
+                    ffmpeg_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    universal_newlines=True
+                )
+                
+                # Variables para rastrear progreso
+                total_duration = None
+                current_time = 0
+                last_progress_update = 0
+                
+                # Leer progreso línea por línea
+                while True:
+                    output = process.stdout.readline()
+                    if output == '' and process.poll() is not None:
+                        break
+                    
+                    if output:
+                        line = output.strip()
+                        
+                        # Parsear información de progreso de FFmpeg
+                        if line.startswith('out_time_ms='):
+                            try:
+                                time_ms = int(line.split('=')[1])
+                                current_time = time_ms / 1000000  # Convertir microsegundos a segundos
+                            except:
+                                pass
+                        
+                        elif line.startswith('total_size='):
+                            # FFmpeg está procesando
+                            elapsed_merge = datetime.now().timestamp() - merge_start_timestamp
+                            
+                            # Actualizar progreso cada 2 segundos
+                            if elapsed_merge - last_progress_update >= 2:
+                                last_progress_update = elapsed_merge
+                                
+                                if self.progress_callback:
+                                    # Estimar progreso basado en segmentos procesados vs tiempo
+                                    progress_percent = min(95, (elapsed_merge / max(10, len(valid_segments) * 0.05)) * 100)
+                                    
+                                    merge_progress_data = {
+                                        'status': 'merging',
+                                        'current_segment': self.decryption_stats['total_segments'],
+                                        'total_segments': self.decryption_stats['total_segments'],
+                                        'decrypted_successfully': self.decryption_stats['decrypted_successfully'],
+                                        'decryption_failed': self.decryption_stats['decryption_failed'],
+                                        'start_time': self.decryption_stats['start_time'].timestamp() if self.decryption_stats['start_time'] else None,
+                                        'merge_start_time': merge_start_timestamp,
+                                        'merge_progress': progress_percent,
+                                        'merge_elapsed': elapsed_merge
+                                    }
+                                    self.progress_callback(merge_progress_data)
+                
+                # Esperar a que termine el proceso
+                stdout, stderr = process.communicate()
+                result = process
+                
+            except subprocess.TimeoutExpired:
+                process.kill()
+                stdout, stderr = process.communicate()
+                result = process
+                result.returncode = -1
+                result.stderr = "Timeout en proceso FFmpeg"
+            
             end_time = datetime.now()
             
             merge_duration = (end_time - start_time).total_seconds()

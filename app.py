@@ -4171,11 +4171,41 @@ function monitorDRMProgress(decryptId) {
                         <div class="text-center">
                             <div class="spinner-border text-success" role="status"></div>
                             <p class="mt-2">🔧 Uniendo segmentos descifrados...</p>
+                    `;
+                    
+                    // Mostrar progreso de FFmpeg si está disponible
+                    if (status.merge_progress !== undefined) {
+                        const progressPercent = Math.min(95, Math.max(0, status.merge_progress));
+                        mergeHtml += `
+                            <div class="progress mt-2 mb-2" style="height: 10px;">
+                                <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" 
+                                     style="width: ${progressPercent}%"></div>
+                            </div>
+                            <small>FFmpeg progreso: ${progressPercent.toFixed(0)}%</small><br>
+                        `;
+                        
+                        // Estimar tiempo restante basado en progreso
+                        if (status.merge_elapsed && progressPercent > 10) {
+                            const rate = progressPercent / status.merge_elapsed;
+                            const remaining = (100 - progressPercent) / rate;
+                            if (remaining > 0 && remaining < 300) { // Solo si es < 5 minutos
+                                const etaMinutes = Math.floor(remaining / 60);
+                                const etaSeconds = Math.floor(remaining % 60);
+                                mergeHtml += `
+                                    <div class="alert alert-warning py-1 px-2 mt-2 mb-1">
+                                        <small><strong>⏳ Tiempo restante FFmpeg: ${etaMinutes}m ${etaSeconds}s</strong></small>
+                                    </div>
+                                `;
+                            }
+                        }
+                    } else {
+                        mergeHtml += `
                             <div class="progress mt-2 mb-2" style="height: 8px;">
                                 <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" style="width: 100%"></div>
                             </div>
                             <small>Procesamiento con FFmpeg en curso</small><br>
-                    `;
+                        `;
+                    }
                     
                     // Mostrar tiempo de descifrado completado y tiempo de unión
                     if (status.start_time && status.merge_start_time) {
