@@ -4019,12 +4019,39 @@ function monitorDRMProgress(decryptId) {
                         html += '</div>';
                     }
                     
+                    // Información de claves de descifrado
+                    if (status.decryption_keys && Object.keys(status.decryption_keys).length > 0) {
+                        html += '<div class="alert alert-info">';
+                        html += '<strong>🔐 Claves de Descifrado Obtenidas</strong><br>';
+                        
+                        let keyCount = 0;
+                        for (const [keyUri, keyInfo] of Object.entries(status.decryption_keys)) {
+                            keyCount++;
+                            html += `<div class="mt-2">`;
+                            html += `<strong>Clave ${keyCount} (${keyInfo.method}):</strong><br>`;
+                            html += `<div class="font-monospace small bg-light p-2 border rounded">`;
+                            html += `🔑 Hex: <span class="text-primary">${keyInfo.hex}</span><br>`;
+                            html += `🌐 Origen: <code>${keyUri}</code><br>`;
+                            html += `💾 Archivo: <code>${keyInfo.file}</code>`;
+                            html += `</div></div>`;
+                        }
+                        html += '</div>';
+                    }
+                    
                     // Información de unión de segmentos
                     if (status.merge_result) {
                         if (status.merge_result.success) {
+                            // Extraer solo el nombre del archivo
+                            const fileName = status.merge_result.output_file.split(/[\\\\\/]/).pop();
+                            
                             html += '<div class="alert alert-success">';
                             html += '<strong>🎬 Video Final Creado</strong><br>';
-                            html += `📁 Archivo: <code>${status.merge_result.output_file}</code><br>`;
+                            html += `<div class="d-flex align-items-center mt-2">`;
+                            html += `<strong class="text-success me-2">📁 Archivo Final:</strong>`;
+                            html += `<span class="badge bg-success fs-6">${fileName}</span>`;
+                            html += `</div>`;
+                            html += `<div class="small text-muted mt-1">Ruta: <code>${status.merge_result.output_file}</code></div>`;
+                            html += `<hr class="my-2">`;
                             html += `📊 Segmentos unidos: ${status.merge_result.segments_merged}`;
                             if (status.merge_result.segments_total) {
                                 html += ` de ${status.merge_result.segments_total}`;
@@ -6249,6 +6276,14 @@ def get_drm_status(decrypt_id):
                     'decryption_failed': stats.get('decryption_failed', 0),
                     'keys_obtained': stats.get('keys_obtained', 0)
                 })
+            
+            # Agregar información de claves de descifrado
+            if 'decryption_keys' in result:
+                status_data['decryption_keys'] = result['decryption_keys']
+            
+            # Agregar información de unión de segmentos
+            if 'merge_result' in result:
+                status_data['merge_result'] = result['merge_result']
         
         return jsonify({'success': True, 'status': status_data})
     else:

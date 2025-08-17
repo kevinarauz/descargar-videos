@@ -118,13 +118,21 @@ class DRMDecryptionModule:
                     
                     # Validar longitud de clave AES-128 (16 bytes)
                     if len(key_data) == 16:
-                        obtained_keys[key_uri] = key_data
                         self.decryption_stats['keys_obtained'] += 1
                         
                         # Guardar clave para análisis
                         key_file = os.path.join(self.output_dir, "keys", f"key_{i:02d}.key")
                         with open(key_file, 'wb') as f:
                             f.write(key_data)
+                        
+                        # Guardar información de la clave para el resultado (sin bytes para JSON)
+                        obtained_keys[key_uri] = {
+                            'hex': key_data.hex(),
+                            'file': key_file,
+                            'method': method,
+                            'size': len(key_data),
+                            'data': key_data  # Para uso interno
+                        }
                         
                         safe_print(f"✅ Clave obtenida: {len(key_data)} bytes")
                         safe_print(f"   Guardada en: {key_file}")
@@ -231,7 +239,9 @@ class DRMDecryptionModule:
             
             if is_encrypted and decryption_keys:
                 # Intentar descifrado con cada clave disponible
-                for key_uri, key_data in decryption_keys.items():
+                for key_uri, key_info in decryption_keys.items():
+                    # Obtener los datos de la clave
+                    key_data = key_info['data'] if isinstance(key_info, dict) else key_info
                     decrypted_data = self.decrypt_aes128_segment(
                         original_data, key_data, segment_index
                     )
@@ -345,11 +355,30 @@ class DRMDecryptionModule:
             else:
                 safe_print(f"\n⚠️ Descifrado exitoso pero fallo en unión: {merge_result['error']}")
         
+        # Crear versión serializable de las claves (sin bytes para JSON)
+        serializable_keys = {}
+        for key_uri, key_info in decryption_keys.items():
+            if isinstance(key_info, dict):
+                serializable_keys[key_uri] = {
+                    'hex': key_info['hex'],
+                    'file': key_info['file'],
+                    'method': key_info['method'],
+                    'size': key_info['size']
+                }
+            else:
+                # Compatibilidad con formato anterior
+                serializable_keys[key_uri] = {
+                    'hex': key_info.hex() if hasattr(key_info, 'hex') else str(key_info),
+                    'method': 'AES-128',
+                    'size': len(key_info) if hasattr(key_info, '__len__') else 0
+                }
+        
         return {
             'success': True,
             'stats': self.decryption_stats,
             'results': results,
-            'merge_result': merge_result
+            'merge_result': merge_result,
+            'decryption_keys': serializable_keys
         }
     
     def generate_decryption_report(self, results: List[Dict]):
