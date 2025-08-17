@@ -4125,28 +4125,45 @@ function monitorDRMProgress(decryptId) {
                             <small>Segmento ${status.current_segment} de ${status.total_segments} (${progress}%)</small><br>
                         `;
                         
-                        // Calcular tiempo restante estimado
-                        if (status.start_time) {
+                        // Calcular tiempos cuando hay progreso suficiente para estimar
+                        if (status.start_time && status.current_segment > 5) { // Esperar al menos 5 segmentos para cálculo preciso
                             const elapsed = (Date.now() / 1000) - status.start_time;
-                            const rate = status.current_segment / elapsed;
+                            const rate = status.current_segment / elapsed; // segmentos por segundo
                             const remaining = status.total_segments - status.current_segment;
                             const eta = remaining / rate;
                             
-                            if (eta > 0 && eta < 7200) { // Solo mostrar si es razonable (< 2 horas)
-                                const etaMinutes = Math.floor(eta / 60);
-                                const etaSeconds = Math.floor(eta % 60);
-                                progressHtml += `<small class="text-info">Tiempo restante estimado: ${etaMinutes}m ${etaSeconds}s</small><br>`;
-                            }
-                            
+                            // Mostrar tiempo transcurrido
                             const elapsedMinutes = Math.floor(elapsed / 60);
                             const elapsedSeconds = Math.floor(elapsed % 60);
-                            progressHtml += `<small class="text-muted">Tiempo transcurrido: ${elapsedMinutes}m ${elapsedSeconds}s</small><br>`;
+                            progressHtml += `<small class="text-muted">⏱️ Transcurrido: ${elapsedMinutes}m ${elapsedSeconds}s</small><br>`;
+                            
+                            // Mostrar tiempo restante si es razonable
+                            if (eta > 0 && eta < 7200 && rate > 0) { // Solo mostrar si es < 2 horas y hay velocidad
+                                const etaMinutes = Math.floor(eta / 60);
+                                const etaSeconds = Math.floor(eta % 60);
+                                const ratePerMin = (rate * 60).toFixed(1);
+                                
+                                // Hacer el tiempo restante más visible con una alerta
+                                progressHtml += `
+                                    <div class="alert alert-warning py-1 px-2 mt-2 mb-1">
+                                        <small><strong>⏳ Tiempo restante estimado: ${etaMinutes}m ${etaSeconds}s</strong></small>
+                                    </div>
+                                `;
+                                progressHtml += `<small class="text-info">📈 Velocidad: ${ratePerMin} seg/min</small><br>`;
+                            }
+                        } else if (status.start_time) {
+                            // Solo mostrar tiempo transcurrido si no hay suficientes datos para estimar
+                            const elapsed = (Date.now() / 1000) - status.start_time;
+                            const elapsedMinutes = Math.floor(elapsed / 60);
+                            const elapsedSeconds = Math.floor(elapsed % 60);
+                            progressHtml += `<small class="text-muted">⏱️ Transcurrido: ${elapsedMinutes}m ${elapsedSeconds}s</small><br>`;
+                            progressHtml += `<small class="text-info">📊 Calculando tiempo restante...</small><br>`;
                         }
                     }
                     
                     progressHtml += `<small class="text-muted">ID: ${decryptId}</small></div>`;
                     contentDiv.innerHTML = progressHtml;
-                    setTimeout(checkProgress, 2000);
+                    setTimeout(checkProgress, 1000); // Actualizar cada segundo para tiempo más preciso
                     
                 } else if (status.status === 'completed') {
                     let html = '<div class="alert alert-success"><strong>🎉 Descifrado Completado</strong></div>';

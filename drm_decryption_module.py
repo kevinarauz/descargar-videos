@@ -333,7 +333,7 @@ class DRMDecryptionModule:
                     # Actualizar contador de progreso
                     self.decryption_stats['current_segment'] = len(results)
                     
-                    # Llamar callback de progreso si está disponible
+                    # Llamar callback de progreso si está disponible (cada segmento procesado)
                     if self.progress_callback:
                         progress_data = {
                             'status': 'processing',
@@ -341,7 +341,9 @@ class DRMDecryptionModule:
                             'total_segments': self.decryption_stats['total_segments'],
                             'decrypted_successfully': self.decryption_stats['decrypted_successfully'],
                             'decryption_failed': self.decryption_stats['decryption_failed'],
-                            'start_time': self.decryption_stats['start_time'].timestamp() if self.decryption_stats['start_time'] else None
+                            'encrypted_segments': self.decryption_stats['encrypted_segments'],
+                            'start_time': self.decryption_stats['start_time'].timestamp() if self.decryption_stats['start_time'] else None,
+                            'timestamp': datetime.now().timestamp()
                         }
                         self.progress_callback(progress_data)
                     
