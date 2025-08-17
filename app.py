@@ -1230,6 +1230,9 @@ default_html = '''
             <button type="button" class="btn btn-info d-flex align-items-center gap-2" onclick="playOnlyM3U8()" title="Reproducir sin descargar (útil para contenido encriptado)">
               <span>👀</span> Solo Ver
             </button>
+            <button type="button" class="btn btn-secondary d-flex align-items-center gap-2" onclick="analyzeMasterPlaylist()" title="Detectar y seleccionar calidad si es Master Playlist">
+              <span>📊</span> Seleccionar Calidad
+            </button>
             <button type="button" class="btn btn-warning d-flex align-items-center gap-2" onclick="analyzeDRM()" title="Analizar protección DRM para investigación académica">
               <span>🔍</span> Analizar DRM
             </button>
@@ -1244,6 +1247,15 @@ default_html = '''
       <div id="metadata-container" class="form-container" style="display: none;">
         <h5 class="fw-semibold mb-3">📋 Información del Video M3U8</h5>
         <div id="metadata-content"></div>
+      </div>
+      
+      <!-- Área de selección de calidad -->
+      <div id="quality-container" class="form-container" style="display: none;">
+        <h5 class="fw-semibold mb-3">📊 Selector de Calidad - Master Playlist</h5>
+        <div class="alert alert-info">
+          <small><strong>Master Playlist detectado:</strong> Puedes elegir entre diferentes calidades de video disponibles.</small>
+        </div>
+        <div id="quality-content"></div>
       </div>
       
       <!-- Área de análisis DRM -->
@@ -3867,6 +3879,105 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================================================
+// Funciones para Master Playlist y selección de calidad
+// ============================================================================
+
+function analyzeMasterPlaylist() {
+    const urlInput = document.getElementById('m3u8-url');
+    const url = urlInput.value.trim();
+    
+    if (!url) {
+        showNotification('Por favor ingresa una URL M3U8 válida', 'warning');
+        return;
+    }
+    
+    const qualityContainer = document.getElementById('quality-container');
+    const qualityContent = document.getElementById('quality-content');
+    
+    // Mostrar contenedor de calidad
+    qualityContainer.style.display = 'block';
+    qualityContent.innerHTML = '<div class="text-center"><div class="spinner-border text-secondary" role="status"><span class="visually-hidden">Analizando...</span></div><p class="mt-2">Analizando Master Playlist...</p></div>';
+    
+    // Analizar Master Playlist
+    fetch('/api/parse_master', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: url })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            if (data.is_master) {
+                showQualitySelector(data.qualities, url);
+            } else {
+                qualityContent.innerHTML = '<div class="alert alert-info">Esta URL no es un Master Playlist.<br>Es un Media Playlist directo - no hay opciones de calidad para seleccionar.</div>';
+            }
+        } else {
+            qualityContent.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+        }
+    })
+    .catch(error => {
+        qualityContent.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    });
+}
+
+function showQualitySelector(qualities, originalUrl) {
+    const qualityContent = document.getElementById('quality-content');
+    
+    let html = '<div class="row">';
+    
+    qualities.forEach((quality, index) => {
+        const isDefault = index === 0; // La primera es la mejor calidad
+        html += '<div class="col-md-6 col-lg-4 mb-3">';
+        html += '<div class="card h-100">';
+        html += '<div class="card-body">';
+        html += `<h6 class="card-title">${quality.label}</h6>`;
+        html += `<p class="card-text small">`;
+        html += `<strong>Resolución:</strong> ${quality.resolution}<br>`;
+        html += `<strong>Bitrate:</strong> ${(quality.bandwidth / 1000000).toFixed(1)} Mbps`;
+        html += `</p>`;
+        html += '<div class="d-grid gap-2">';
+        html += `<button class="btn ${isDefault ? 'btn-primary' : 'btn-outline-primary'} btn-sm" onclick="selectQuality('${quality.url}', '${quality.label}')">`;
+        html += `${isDefault ? '⭐ ' : ''}Seleccionar${isDefault ? ' (Recomendada)' : ''}`;
+        html += '</button>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+    });
+    
+    html += '</div>';
+    
+    // Agregar información adicional
+    html += '<div class="alert alert-warning mt-3">';
+    html += '<small><strong>Nota:</strong> Al seleccionar una calidad, se actualizará la URL en el campo de entrada para usar esa calidad específica.</small>';
+    html += '</div>';
+    
+    qualityContent.innerHTML = html;
+}
+
+function selectQuality(qualityUrl, qualityLabel) {
+    const urlInput = document.getElementById('m3u8-url');
+    
+    // Actualizar la URL en el campo de entrada
+    urlInput.value = qualityUrl;
+    
+    // Mostrar notificación
+    showNotification(`Calidad seleccionada: ${qualityLabel}`, 'success');
+    
+    // Ocultar el selector de calidad
+    const qualityContainer = document.getElementById('quality-container');
+    qualityContainer.style.display = 'none';
+    
+    // Mostrar la nueva URL en los metadatos
+    setTimeout(() => {
+        requestMetadata();
+    }, 500);
+}
+
+// ============================================================================
 // Funciones DRM para investigación académica
 // ============================================================================
 
@@ -5669,6 +5780,118 @@ def process_download_queue():
     
     queue_running = False
     save_download_state()
+
+# ============================================================================
+# Funciones para Master Playlist y selección de calidad
+# ============================================================================
+
+def parse_master_playlist(m3u8_url):
+    """
+    Analiza un Master Playlist y extrae las opciones de calidad disponibles
+    
+    Returns:
+        dict: {
+            'is_master': bool,
+            'qualities': [{'url': str, 'bandwidth': int, 'resolution': str, 'label': str}]
+        }
+    """
+    try:
+        response = requests.get(m3u8_url, timeout=10)
+        response.raise_for_status()
+        content = response.text
+        
+        # Verificar si es un Master Playlist
+        if '#EXT-X-STREAM-INF' not in content:
+            return {'is_master': False, 'qualities': []}
+        
+        qualities = []
+        lines = content.strip().split('\n')
+        
+        for i, line in enumerate(lines):
+            if line.startswith('#EXT-X-STREAM-INF'):
+                # Parsear información de la calidad
+                bandwidth = None
+                resolution = None
+                
+                # Extraer BANDWIDTH
+                bandwidth_match = re.search(r'BANDWIDTH=(\d+)', line)
+                if bandwidth_match:
+                    bandwidth = int(bandwidth_match.group(1))
+                
+                # Extraer RESOLUTION
+                resolution_match = re.search(r'RESOLUTION=(\d+x\d+)', line)
+                if resolution_match:
+                    resolution = resolution_match.group(1)
+                
+                # La siguiente línea debería ser la URL
+                if i + 1 < len(lines):
+                    quality_url = lines[i + 1].strip()
+                    
+                    # Convertir URL relativa a absoluta
+                    if not quality_url.startswith('http'):
+                        from urllib.parse import urljoin
+                        quality_url = urljoin(m3u8_url, quality_url)
+                    
+                    # Generar etiqueta descriptiva
+                    label_parts = []
+                    if resolution:
+                        label_parts.append(resolution)
+                    if bandwidth:
+                        bitrate_mbps = bandwidth / 1000000
+                        label_parts.append(f"{bitrate_mbps:.1f} Mbps")
+                    
+                    label = " - ".join(label_parts) if label_parts else f"Calidad {len(qualities) + 1}"
+                    
+                    qualities.append({
+                        'url': quality_url,
+                        'bandwidth': bandwidth or 0,
+                        'resolution': resolution or 'Desconocida',
+                        'label': label
+                    })
+        
+        # Ordenar por bandwidth (mayor a menor)
+        qualities.sort(key=lambda x: x['bandwidth'], reverse=True)
+        
+        return {
+            'is_master': True,
+            'qualities': qualities
+        }
+        
+    except Exception as e:
+        log_to_file(f"Error analizando Master Playlist: {e}")
+        return {'is_master': False, 'qualities': []}
+
+@app.route('/api/parse_master', methods=['POST'])
+def parse_master_endpoint():
+    """Analiza si la URL es un Master Playlist y devuelve las calidades disponibles"""
+    try:
+        data = request.get_json()
+        url = data.get('url', '').strip()
+        
+        if not url:
+            return jsonify({'success': False, 'error': 'URL requerida'})
+        
+        # Analizar Master Playlist
+        result = parse_master_playlist(url)
+        
+        if result['is_master']:
+            log_to_file(f"Master Playlist detectado con {len(result['qualities'])} calidades")
+            return jsonify({
+                'success': True,
+                'is_master': True,
+                'qualities': result['qualities'],
+                'message': f"Master Playlist detectado con {len(result['qualities'])} opciones de calidad"
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'is_master': False,
+                'message': 'No es un Master Playlist - es un Media Playlist directo'
+            })
+            
+    except Exception as e:
+        log_to_file(f"Error analizando Master Playlist: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/metadata', methods=['POST'])
 def get_m3u8_metadata():
