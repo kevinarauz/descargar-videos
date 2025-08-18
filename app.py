@@ -4940,7 +4940,7 @@ def renombrar_archivo(filename):
         # Renombrar el archivo
         try:
             os.rename(archivo_original, archivo_nuevo)
-            safe_safe_print(f"✅ Archivo renombrado exitosamente")
+            safe_print(f"✅ Archivo renombrado exitosamente")
         except OSError as os_error:
             error_msg = f"Error del sistema al renombrar: {str(os_error)}"
             safe_print(f"❌ {error_msg}")
