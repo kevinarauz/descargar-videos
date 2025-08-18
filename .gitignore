@@ -2,9 +2,27 @@
 temp_segments/
 temp_segments/*
 
-# Archivos estáticos descargados (videos MP4)
+# Archivos de estado de descarga
+download_state.json
+
+# Directorios de DRM descifrado (segmentos temporales)
+decrypted_content/
+analisis_submarifest/
+*/original_segments/
+*/decrypted_segments/
+*/keys/
+*/analysis/
+
+# Segmentos de video temporales (.ts)
+*.ts
+
+# Archivos estáticos descargados - INCLUIR solo videos MP4 finales
 static/
-static/*
+# Pero permitir videos MP4 resultantes y metadatos
+!static/*.mp4
+!static/*.meta
+!static/*/*.mp4
+!static/*/*.meta
 
 # Archivos de Python
 __pycache__/

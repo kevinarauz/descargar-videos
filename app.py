@@ -10,6 +10,16 @@ from subprocess import run as subprocess_run, CalledProcessError
 from flask import Flask, render_template_string, request, send_file, jsonify
 from m3u8_downloader import M3U8Downloader
 
+# Importar módulos DRM para investigación académica
+try:
+    from drm_research_module import DRMResearchModule
+    from drm_decryption_module import DRMDecryptionModule, decrypt_drm_content
+    DRM_AVAILABLE = True
+    print("Modulos DRM disponibles para investigacion academica")
+except ImportError as e:
+    DRM_AVAILABLE = False
+    print(f"Modulos DRM no disponibles: {e}")
+
 # ============================================================================
 # 🔧 CONFIGURACIÓN PERSONAL - Ajusta estos valores según tus necesidades
 # ============================================================================
@@ -1220,6 +1230,12 @@ default_html = '''
             <button type="button" class="btn btn-info d-flex align-items-center gap-2" onclick="playOnlyM3U8()" title="Reproducir sin descargar (útil para contenido encriptado)">
               <span>👀</span> Solo Ver
             </button>
+            <button type="button" class="btn btn-secondary d-flex align-items-center gap-2" onclick="analyzeMasterPlaylist()" title="Detectar y seleccionar calidad si es Master Playlist">
+              <span>📊</span> Seleccionar Calidad
+            </button>
+            <button type="button" class="btn btn-warning d-flex align-items-center gap-2" onclick="analyzeDRM()" title="Analizar protección DRM para investigación académica">
+              <span>🔍</span> Analizar DRM
+            </button>
             <button type="button" class="btn btn-outline-light d-flex align-items-center gap-2" onclick="addToQueueFromForm()">
               <span>➕</span> Añadir a Cola
             </button>
@@ -1231,6 +1247,21 @@ default_html = '''
       <div id="metadata-container" class="form-container" style="display: none;">
         <h5 class="fw-semibold mb-3">📋 Información del Video M3U8</h5>
         <div id="metadata-content"></div>
+      </div>
+      
+      <!-- Área de selección de calidad -->
+      <div id="quality-container" class="form-container" style="display: none;">
+        <h5 class="fw-semibold mb-3">📊 Análisis de Calidad</h5>
+        <div id="quality-content"></div>
+      </div>
+      
+      <!-- Área de análisis DRM -->
+      <div id="drm-container" class="form-container" style="display: none;">
+        <h5 class="fw-semibold mb-3">🔍 Análisis DRM - Investigación Académica</h5>
+        <div class="alert alert-info">
+          <small><strong>Nota:</strong> Esta herramienta está destinada exclusivamente para investigación académica y análisis de seguridad en entornos controlados.</small>
+        </div>
+        <div id="drm-content"></div>
       </div>
       
       <div id="video-container"></div>
@@ -3843,6 +3874,508 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// ============================================================================
+// Funciones para Master Playlist y selección de calidad
+// ============================================================================
+
+function analyzeMasterPlaylist() {
+    const urlInput = document.getElementById('m3u8-url');
+    const url = urlInput.value.trim();
+    
+    if (!url) {
+        showNotification('Por favor ingresa una URL M3U8 válida', 'warning');
+        return;
+    }
+    
+    const qualityContainer = document.getElementById('quality-container');
+    const qualityContent = document.getElementById('quality-content');
+    
+    // Mostrar contenedor de calidad
+    qualityContainer.style.display = 'block';
+    qualityContent.innerHTML = '<div class="text-center"><div class="spinner-border text-secondary" role="status"><span class="visually-hidden">Analizando...</span></div><p class="mt-2">Analizando Master Playlist...</p></div>';
+    
+    // Analizar Master Playlist
+    fetch('/api/parse_master', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: url })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            if (data.is_master) {
+                showQualitySelector(data.qualities, url);
+            } else {
+                qualityContent.innerHTML = '<div class="alert alert-info">Esta URL no es un Master Playlist.<br>Es un Media Playlist directo - no hay opciones de calidad para seleccionar.</div>';
+            }
+        } else {
+            qualityContent.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+        }
+    })
+    .catch(error => {
+        qualityContent.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    });
+}
+
+function showQualitySelector(qualities, originalUrl) {
+    const qualityContent = document.getElementById('quality-content');
+    
+    let html = '<div class="alert alert-success mb-3">';
+    html += '<strong>✅ Master Playlist detectado:</strong> Encontradas ' + qualities.length + ' opciones de calidad disponibles.';
+    html += '</div>';
+    html += '<div class="row">';
+    
+    qualities.forEach((quality, index) => {
+        const isDefault = index === 0; // La primera es la mejor calidad
+        html += '<div class="col-md-6 col-lg-4 mb-3">';
+        html += '<div class="card h-100">';
+        html += '<div class="card-body">';
+        html += `<h6 class="card-title">${quality.label}</h6>`;
+        html += `<p class="card-text small">`;
+        html += `<strong>Resolución:</strong> ${quality.resolution}<br>`;
+        html += `<strong>Bitrate:</strong> ${(quality.bandwidth / 1000000).toFixed(1)} Mbps`;
+        html += `</p>`;
+        html += '<div class="d-grid gap-2">';
+        html += `<button class="btn ${isDefault ? 'btn-primary' : 'btn-outline-primary'} btn-sm" onclick="selectQuality('${quality.url}', '${quality.label}')">`;
+        html += `${isDefault ? '⭐ ' : ''}Seleccionar${isDefault ? ' (Recomendada)' : ''}`;
+        html += '</button>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+    });
+    
+    html += '</div>';
+    
+    // Agregar información adicional
+    html += '<div class="alert alert-warning mt-3">';
+    html += '<small><strong>Nota:</strong> Al seleccionar una calidad, se actualizará la URL en el campo de entrada para usar esa calidad específica.</small>';
+    html += '</div>';
+    
+    qualityContent.innerHTML = html;
+}
+
+function selectQuality(qualityUrl, qualityLabel) {
+    const urlInput = document.getElementById('m3u8-url');
+    
+    // Actualizar la URL en el campo de entrada
+    urlInput.value = qualityUrl;
+    
+    // Mostrar notificación
+    showNotification(`Calidad seleccionada: ${qualityLabel}`, 'success');
+    
+    // Ocultar el selector de calidad
+    const qualityContainer = document.getElementById('quality-container');
+    qualityContainer.style.display = 'none';
+    
+    // Mostrar la nueva URL en los metadatos
+    setTimeout(() => {
+        extractMetadata();
+    }, 500);
+}
+
+// ============================================================================
+// Funciones DRM para investigación académica
+// ============================================================================
+
+function analyzeDRM() {
+    const urlInput = document.getElementById('m3u8-url');
+    const url = urlInput.value.trim();
+    
+    if (!url) {
+        showNotification('Por favor ingresa una URL M3U8 válida', 'warning');
+        return;
+    }
+    
+    const drmContainer = document.getElementById('drm-container');
+    const drmContent = document.getElementById('drm-content');
+    
+    // Mostrar contenedor DRM
+    drmContainer.style.display = 'block';
+    drmContent.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Analizando...</span></div><p class="mt-2">Analizando protección DRM...</p></div>';
+    
+    // Hacer análisis DRM
+    fetch('/api/drm/analyze', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: url })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            displayDRMResults(data);
+        } else {
+            drmContent.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+        }
+    })
+    .catch(error => {
+        drmContent.innerHTML = `<div class="alert alert-danger">Error de conexión: ${error.message}</div>`;
+    });
+}
+
+function displayDRMResults(data) {
+    const drmContent = document.getElementById('drm-content');
+    
+    let html = '<div class="row">';
+    
+    // Resultados del análisis
+    html += '<div class="col-md-6">';
+    html += '<div class="card">';
+    html += '<div class="card-header"><h6 class="mb-0">📊 Resultados del Análisis</h6></div>';
+    html += '<div class="card-body">';
+    
+    if (data.drm_detected) {
+        html += '<div class="alert alert-warning"><strong>🔒 DRM Detectado</strong><br>';
+        html += `Métodos de encriptación: ${data.encryption_methods.join(', ')}</div>`;
+    } else {
+        html += '<div class="alert alert-success"><strong>🔓 Sin DRM</strong><br>No se detectó protección DRM</div>';
+    }
+    
+    html += `<p><strong>Total de segmentos:</strong> ${data.total_segments}</p>`;
+    html += '</div></div></div>';
+    
+    // Acciones disponibles
+    html += '<div class="col-md-6">';
+    html += '<div class="card">';
+    html += '<div class="card-header"><h6 class="mb-0">⚡ Acciones Disponibles</h6></div>';
+    html += '<div class="card-body">';
+    
+    if (data.drm_detected) {
+        html += '<div class="d-grid gap-2">';
+        html += `<button class="btn btn-warning" onclick="startDRMDecryption()">🔓 Descifrar DRM</button>`;
+        html += `<button class="btn btn-outline-secondary" onclick="showAnalysisReport('${data.academic_report}')">📋 Ver Reporte Académico</button>`;
+        html += '</div>';
+    } else {
+        html += '<div class="alert alert-info">El contenido no requiere descifrado DRM.<br>Puedes descargarlo normalmente.</div>';
+    }
+    
+    html += '</div></div></div>';
+    html += '</div>';
+    
+    // Área para progreso de descifrado
+    html += '<div id="drm-decrypt-progress" style="display: none;" class="mt-3">';
+    html += '<div class="card">';
+    html += '<div class="card-header"><h6 class="mb-0">⚙️ Progreso de Descifrado</h6></div>';
+    html += '<div class="card-body" id="drm-decrypt-content"></div>';
+    html += '</div></div>';
+    
+    drmContent.innerHTML = html;
+}
+
+function startDRMDecryption() {
+    const progressDiv = document.getElementById('drm-decrypt-progress');
+    const contentDiv = document.getElementById('drm-decrypt-content');
+    
+    progressDiv.style.display = 'block';
+    contentDiv.innerHTML = '<div class="text-center"><div class="spinner-border text-warning" role="status"></div><p class="mt-2">Iniciando descifrado DRM...</p></div>';
+    
+    // Iniciar descifrado (el backend encontrará automáticamente el análisis más reciente)
+    fetch('/api/drm/decrypt', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+            max_workers: 20 
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Monitorear progreso
+            monitorDRMProgress(data.decrypt_id);
+        } else {
+            contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+        }
+    })
+    .catch(error => {
+        contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    });
+}
+
+function monitorDRMProgress(decryptId) {
+    const contentDiv = document.getElementById('drm-decrypt-content');
+    
+    const checkProgress = () => {
+        fetch(`/api/drm/status/${decryptId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const status = data.status;
+                
+                if (status.status === 'processing') {
+                    let progressHtml = `
+                        <div class="text-center">
+                            <div class="spinner-border text-warning" role="status"></div>
+                            <p class="mt-2">Descifrando contenido DRM...</p>
+                    `;
+                    
+                    // Mostrar progreso detallado si está disponible
+                    if (status.current_segment && status.total_segments) {
+                        const progress = Math.round((status.current_segment / status.total_segments) * 100);
+                        progressHtml += `
+                            <div class="progress mt-2 mb-2" style="height: 8px;">
+                                <div class="progress-bar bg-warning" style="width: ${progress}%"></div>
+                            </div>
+                            <small>Segmento ${status.current_segment} de ${status.total_segments} (${progress}%)</small><br>
+                        `;
+                        
+                        // Calcular tiempos cuando hay progreso suficiente para estimar
+                        if (status.start_time && status.current_segment > 5) { // Esperar al menos 5 segmentos para cálculo preciso
+                            const elapsed = (Date.now() / 1000) - status.start_time;
+                            const rate = status.current_segment / elapsed; // segmentos por segundo
+                            const remaining = status.total_segments - status.current_segment;
+                            const eta = remaining / rate;
+                            
+                            // Mostrar tiempo transcurrido
+                            const elapsedMinutes = Math.floor(elapsed / 60);
+                            const elapsedSeconds = Math.floor(elapsed % 60);
+                            progressHtml += `<small class="text-muted">⏱️ Transcurrido: ${elapsedMinutes}m ${elapsedSeconds}s</small><br>`;
+                            
+                            // Mostrar tiempo restante si es razonable
+                            if (eta > 0 && eta < 7200 && rate > 0) { // Solo mostrar si es < 2 horas y hay velocidad
+                                const etaMinutes = Math.floor(eta / 60);
+                                const etaSeconds = Math.floor(eta % 60);
+                                const ratePerMin = (rate * 60).toFixed(1);
+                                
+                                // Hacer el tiempo restante más visible con una alerta
+                                progressHtml += `
+                                    <div class="alert alert-warning py-1 px-2 mt-2 mb-1">
+                                        <small><strong>⏳ Tiempo restante estimado: ${etaMinutes}m ${etaSeconds}s</strong></small>
+                                    </div>
+                                `;
+                                progressHtml += `<small class="text-info">📈 Velocidad: ${ratePerMin} seg/min</small><br>`;
+                            }
+                        } else if (status.start_time) {
+                            // Solo mostrar tiempo transcurrido si no hay suficientes datos para estimar
+                            const elapsed = (Date.now() / 1000) - status.start_time;
+                            const elapsedMinutes = Math.floor(elapsed / 60);
+                            const elapsedSeconds = Math.floor(elapsed % 60);
+                            progressHtml += `<small class="text-muted">⏱️ Transcurrido: ${elapsedMinutes}m ${elapsedSeconds}s</small><br>`;
+                            progressHtml += `<small class="text-info">📊 Calculando tiempo restante...</small><br>`;
+                        }
+                    }
+                    
+                    progressHtml += `<small class="text-muted">ID: ${decryptId}</small></div>`;
+                    contentDiv.innerHTML = progressHtml;
+                    setTimeout(checkProgress, 1000); // Actualizar cada segundo para tiempo más preciso
+                    
+                } else if (status.status === 'merging') {
+                    // Fase de unión de segmentos con FFmpeg
+                    let mergeHtml = `
+                        <div class="text-center">
+                            <div class="spinner-border text-success" role="status"></div>
+                            <p class="mt-2">🔧 Uniendo segmentos descifrados...</p>
+                    `;
+                    
+                    // Mostrar progreso de FFmpeg si está disponible
+                    if (status.merge_progress !== undefined) {
+                        const progressPercent = Math.min(95, Math.max(0, status.merge_progress));
+                        mergeHtml += `
+                            <div class="progress mt-2 mb-2" style="height: 10px;">
+                                <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" 
+                                     style="width: ${progressPercent}%"></div>
+                            </div>
+                            <small>FFmpeg progreso: ${progressPercent.toFixed(0)}%</small><br>
+                        `;
+                        
+                        // Estimar tiempo restante basado en progreso
+                        if (status.merge_elapsed && progressPercent > 10) {
+                            const rate = progressPercent / status.merge_elapsed;
+                            const remaining = (100 - progressPercent) / rate;
+                            if (remaining > 0 && remaining < 300) { // Solo si es < 5 minutos
+                                const etaMinutes = Math.floor(remaining / 60);
+                                const etaSeconds = Math.floor(remaining % 60);
+                                mergeHtml += `
+                                    <div class="alert alert-warning py-1 px-2 mt-2 mb-1">
+                                        <small><strong>⏳ Tiempo restante FFmpeg: ${etaMinutes}m ${etaSeconds}s</strong></small>
+                                    </div>
+                                `;
+                            }
+                        }
+                    } else {
+                        mergeHtml += `
+                            <div class="progress mt-2 mb-2" style="height: 8px;">
+                                <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" style="width: 100%"></div>
+                            </div>
+                            <small>Procesamiento con FFmpeg en curso</small><br>
+                        `;
+                    }
+                    
+                    // Mostrar tiempo de descifrado completado y tiempo de unión
+                    if (status.start_time && status.merge_start_time) {
+                        const decryptTime = status.merge_start_time - status.start_time;
+                        const decryptMinutes = Math.floor(decryptTime / 60);
+                        const decryptSeconds = Math.floor(decryptTime % 60);
+                        
+                        const mergeElapsed = (Date.now() / 1000) - status.merge_start_time;
+                        const mergeMinutes = Math.floor(mergeElapsed / 60);
+                        const mergeSecondsVal = Math.floor(mergeElapsed % 60);
+                        
+                        mergeHtml += `
+                            <div class="alert alert-info py-1 px-2 mt-2 mb-1">
+                                <small>✅ Descifrado: ${decryptMinutes}m ${decryptSeconds}s</small><br>
+                                <small>⏱️ Uniendo: ${mergeMinutes}m ${mergeSecondsVal}s</small>
+                            </div>
+                        `;
+                    }
+                    
+                    mergeHtml += `<small class="text-muted">ID: ${decryptId}</small></div>`;
+                    contentDiv.innerHTML = mergeHtml;
+                    setTimeout(checkProgress, 1000);
+                    
+                } else if (status.status === 'completed') {
+                    let html = '<div class="alert alert-success"><strong>🎉 Descifrado Completado</strong></div>';
+                    
+                    // Mostrar tiempos desglosados
+                    if (status.start_time && status.end_time) {
+                        const totalTime = status.end_time - status.start_time;
+                        const totalMinutes = Math.floor(totalTime / 60);
+                        const totalSeconds = Math.floor(totalTime % 60);
+                        
+                        html += `<div class="alert alert-success mb-3">`;
+                        html += `⏱️ <strong>Tiempo total del proceso:</strong> ${totalMinutes}m ${totalSeconds}s`;
+                        
+                        // Si hay información de merge, mostrar desglose
+                        if (status.result && status.result.merge_result) {
+                            const mergeResult = status.result.merge_result;
+                            if (mergeResult.duration) {
+                                const mergeMinutes = Math.floor(mergeResult.duration / 60);
+                                const mergeSeconds = Math.floor(mergeResult.duration % 60);
+                                const decryptTime = totalTime - mergeResult.duration;
+                                const decryptMinutes = Math.floor(decryptTime / 60);
+                                const decryptSecondsVal = Math.floor(decryptTime % 60);
+                                
+                                html += `<br><small class="text-muted">`;
+                                html += `🔓 Descifrado: ${decryptMinutes}m ${decryptSecondsVal}s • `;
+                                html += `🔧 Unión: ${mergeMinutes}m ${mergeSeconds}s`;
+                                html += `</small>`;
+                            }
+                        }
+                        html += `</div>`;
+                    }
+                    
+                    if (status.total_segments) {
+                        html += '<div class="row text-center mb-3">';
+                        html += `<div class="col-3"><strong>${status.total_segments}</strong><br><small>Total</small></div>`;
+                        html += `<div class="col-3"><strong>${status.decrypted_successfully}</strong><br><small>Descifrados</small></div>`;
+                        html += `<div class="col-3"><strong>${status.decryption_failed}</strong><br><small>Fallos</small></div>`;
+                        html += `<div class="col-3"><strong>${status.keys_obtained}</strong><br><small>Claves</small></div>`;
+                        html += '</div>';
+                    }
+                    
+                    // Información de claves de descifrado
+                    if (status.decryption_keys && Object.keys(status.decryption_keys).length > 0) {
+                        html += '<div class="alert alert-info">';
+                        html += '<strong>🔐 Claves de Descifrado Obtenidas</strong><br>';
+                        
+                        let keyCount = 0;
+                        for (const [keyUri, keyInfo] of Object.entries(status.decryption_keys)) {
+                            keyCount++;
+                            html += `<div class="mt-2">`;
+                            html += `<strong>Clave ${keyCount} (${keyInfo.method}):</strong><br>`;
+                            html += `<div class="font-monospace small bg-light p-2 border rounded">`;
+                            html += `🔑 Hex: <span class="text-primary">${keyInfo.hex}</span><br>`;
+                            html += `🌐 Origen: <code>${keyUri}</code><br>`;
+                            html += `💾 Archivo: <code>${keyInfo.file}</code>`;
+                            html += `</div></div>`;
+                        }
+                        html += '</div>';
+                    }
+                    
+                    // Información de unión de segmentos
+                    if (status.merge_result) {
+                        if (status.merge_result.success) {
+                            // Extraer solo el nombre del archivo
+                            const fileName = status.merge_result.output_file.split(/[\\\\\/]/).pop();
+                            
+                            html += '<div class="alert alert-success">';
+                            html += '<strong>🎬 Video Final Creado</strong><br>';
+                            html += `<div class="d-flex align-items-center mt-2">`;
+                            html += `<strong class="text-success me-2">📁 Archivo Final:</strong>`;
+                            html += `<span class="badge bg-success fs-6">${fileName}</span>`;
+                            html += `</div>`;
+                            html += `<div class="small text-muted mt-1">Ruta: <code>${status.merge_result.output_file}</code></div>`;
+                            html += `<hr class="my-2">`;
+                            html += `📊 Segmentos unidos: ${status.merge_result.segments_merged}`;
+                            if (status.merge_result.segments_total) {
+                                html += ` de ${status.merge_result.segments_total}`;
+                                if (status.merge_result.segments_corrupted > 0) {
+                                    html += ` (${status.merge_result.segments_corrupted} omitidos)`;
+                                }
+                            }
+                            html += `<br>💾 Tamaño: ${(status.merge_result.final_size / (1024*1024)).toFixed(1)} MB<br>`;
+                            html += `⏱️ Tiempo de unión: ${status.merge_result.duration.toFixed(1)}s`;
+                            html += '</div>';
+                        } else {
+                            html += '<div class="alert alert-warning">';
+                            html += '<strong>⚠️ Descifrado OK - Error en Unión</strong><br>';
+                            html += `Error: ${status.merge_result.error}<br>`;
+                            html += 'Los segmentos descifrados están disponibles individualmente.';
+                            html += '</div>';
+                        }
+                    }
+                    
+                    html += '<div class="mt-3">';
+                    html += '<div class="alert alert-info">';
+                    html += '<strong>📁 Archivos generados:</strong><br>';
+                    html += '• <code>decrypted_content/decrypted_segments/</code> - Segmentos descifrados<br>';
+                    html += '• <code>decrypted_content/keys/</code> - Claves de descifrado<br>';
+                    html += '• <code>decrypted_content/analysis/</code> - Reportes académicos<br>';
+                    if (status.merge_result && status.merge_result.success) {
+                        html += `• <code>${status.merge_result.output_file}</code> - Video final MP4`;
+                    }
+                    html += '</div></div>';
+                    
+                    contentDiv.innerHTML = html;
+                    
+                } else if (status.status === 'failed') {
+                    contentDiv.innerHTML = `<div class="alert alert-danger"><strong>❌ Error en descifrado:</strong><br>${status.error || 'Error desconocido'}</div>`;
+                }
+            }
+        })
+        .catch(error => {
+            contentDiv.innerHTML = `<div class="alert alert-danger">Error monitoreando progreso: ${error.message}</div>`;
+        });
+    };
+    
+    checkProgress();
+}
+
+function showAnalysisReport(reportPath) {
+    if (reportPath) {
+        const newWindow = window.open('', '_blank');
+        newWindow.document.write('<h3>Reporte Académico DRM</h3><p>Archivo: ' + reportPath + '</p>');
+    } else {
+        showNotification('Reporte no disponible', 'warning');
+    }
+}
+
+// Verificar disponibilidad DRM al cargar
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/drm/check')
+    .then(response => response.json())
+    .then(data => {
+        if (!data.drm_available) {
+            // Deshabilitar botón DRM si no está disponible
+            const drmBtn = document.querySelector('[onclick="analyzeDRM()"]');
+            if (drmBtn) {
+                drmBtn.disabled = true;
+                drmBtn.title = 'Módulos DRM no disponibles';
+                drmBtn.innerHTML = '<span>🔍</span> DRM No Disponible';
+            }
+        }
+    })
+    .catch(error => {
+        console.log('Error verificando DRM:', error);
+    });
+});
+
 </script>
 </body>
 </html>
@@ -5387,6 +5920,138 @@ def process_download_queue():
     queue_running = False
     save_download_state()
 
+# ============================================================================
+# Funciones para Master Playlist y selección de calidad
+# ============================================================================
+
+def parse_master_playlist(m3u8_url):
+    """
+    Analiza un Master Playlist y extrae las opciones de calidad disponibles
+    
+    Returns:
+        dict: {
+            'is_master': bool,
+            'qualities': [{'url': str, 'bandwidth': int, 'resolution': str, 'label': str}]
+        }
+    """
+    import requests
+    import re
+    
+    try:
+        log_to_file(f"🔍 Analizando URL: {m3u8_url}")
+        response = requests.get(m3u8_url, timeout=10)
+        response.raise_for_status()
+        content = response.text
+        
+        log_to_file(f"📄 Contenido descargado ({len(content)} chars)")
+        log_to_file(f"📄 Primeras 500 chars: {content[:500]}")
+        
+        # Verificar si es un Master Playlist
+        has_stream_inf = '#EXT-X-STREAM-INF' in content
+        log_to_file(f"🔍 ¿Contiene #EXT-X-STREAM-INF? {has_stream_inf}")
+        
+        if not has_stream_inf:
+            log_to_file(f"❌ No es Master Playlist - no contiene #EXT-X-STREAM-INF")
+            return {'is_master': False, 'qualities': []}
+        
+        qualities = []
+        lines = content.strip().split('\n')
+        
+        for i, line in enumerate(lines):
+            if line.startswith('#EXT-X-STREAM-INF'):
+                # Parsear información de la calidad
+                bandwidth = None
+                resolution = None
+                
+                # Extraer BANDWIDTH
+                bandwidth_match = re.search(r'BANDWIDTH=(\d+)', line)
+                if bandwidth_match:
+                    bandwidth = int(bandwidth_match.group(1))
+                
+                # Extraer RESOLUTION
+                resolution_match = re.search(r'RESOLUTION=(\d+x\d+)', line)
+                if resolution_match:
+                    resolution = resolution_match.group(1)
+                
+                # La siguiente línea debería ser la URL
+                if i + 1 < len(lines):
+                    quality_url = lines[i + 1].strip()
+                    
+                    # Convertir URL relativa a absoluta
+                    if not quality_url.startswith('http'):
+                        from urllib.parse import urljoin
+                        quality_url = urljoin(m3u8_url, quality_url)
+                    
+                    # Generar etiqueta descriptiva
+                    label_parts = []
+                    if resolution:
+                        label_parts.append(resolution)
+                    if bandwidth:
+                        bitrate_mbps = bandwidth / 1000000
+                        label_parts.append(f"{bitrate_mbps:.1f} Mbps")
+                    
+                    label = " - ".join(label_parts) if label_parts else f"Calidad {len(qualities) + 1}"
+                    
+                    qualities.append({
+                        'url': quality_url,
+                        'bandwidth': bandwidth or 0,
+                        'resolution': resolution or 'Desconocida',
+                        'label': label
+                    })
+        
+        # Ordenar por bandwidth (mayor a menor)
+        qualities.sort(key=lambda x: x['bandwidth'], reverse=True)
+        
+        log_to_file(f"✅ Master Playlist procesado exitosamente")
+        log_to_file(f"📊 Encontradas {len(qualities)} calidades:")
+        for i, q in enumerate(qualities):
+            log_to_file(f"  {i+1}. {q['label']} - {q['url']}")
+        
+        return {
+            'is_master': True,
+            'qualities': qualities
+        }
+        
+    except Exception as e:
+        log_to_file(f"Error analizando Master Playlist: {e}")
+        return {'is_master': False, 'qualities': []}
+
+@app.route('/api/parse_master', methods=['POST'])
+def parse_master_endpoint():
+    """Analiza si la URL es un Master Playlist y devuelve las calidades disponibles"""
+    try:
+        data = request.get_json()
+        url = data.get('url', '').strip()
+        
+        if not url:
+            return jsonify({'success': False, 'error': 'URL requerida'})
+        
+        # Analizar Master Playlist
+        result = parse_master_playlist(url)
+        
+        # Debug logging
+        log_to_file(f"Parse result: is_master={result['is_master']}, qualities={len(result.get('qualities', []))}")
+        
+        if result['is_master']:
+            log_to_file(f"Master Playlist detectado con {len(result['qualities'])} calidades")
+            return jsonify({
+                'success': True,
+                'is_master': True,
+                'qualities': result['qualities'],
+                'message': f"Master Playlist detectado con {len(result['qualities'])} opciones de calidad"
+            })
+        else:
+            log_to_file(f"No es Master Playlist para URL: {url}")
+            return jsonify({
+                'success': True,
+                'is_master': False,
+                'message': 'No es un Master Playlist - es un Media Playlist directo'
+            })
+            
+    except Exception as e:
+        log_to_file(f"Error analizando Master Playlist: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/api/metadata', methods=['POST'])
 def get_m3u8_metadata():
     """Obtiene metadatos de una URL M3U8 para sugerir nombre y mostrar información"""
@@ -5829,6 +6494,225 @@ def get_log_files():
         return jsonify({'success': True, 'files': log_files})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+# ============================================================================
+# ENDPOINTS DRM - Para investigación académica
+# ============================================================================
+
+@app.route('/api/drm/analyze', methods=['POST'])
+def analyze_drm_endpoint():
+    """Analiza el contenido M3U8 en busca de protección DRM"""
+    if not DRM_AVAILABLE:
+        return jsonify({
+            'success': False, 
+            'error': 'Módulos DRM no disponibles'
+        })
+    
+    try:
+        data = request.get_json()
+        url = data.get('url')
+        
+        if not url:
+            return jsonify({'success': False, 'error': 'URL requerida'})
+        
+        log_to_file(f"Iniciando analisis DRM para: {url}")
+        
+        # Crear instancia del módulo de investigación DRM
+        drm_module = DRMResearchModule()
+        
+        # Realizar análisis
+        analysis_result = drm_module.analyze_m3u8_drm(url)
+        
+        if analysis_result['success']:
+            # Los datos están directamente en analysis_result
+            manifest_info = analysis_result.get('manifest_info', {})
+            
+            # Preparar respuesta
+            response_data = {
+                'success': True,
+                'drm_detected': len(manifest_info.get('encryption_keys', [])) > 0,
+                'encryption_methods': [key.get('method') for key in manifest_info.get('encryption_keys', [])],
+                'total_segments': len(manifest_info.get('segments', [])),
+                'analysis_data': analysis_result,  # Pasar todos los datos de análisis
+                'academic_findings': analysis_result.get('academic_findings', [])
+            }
+            
+            log_to_file(f"Analisis DRM completado - DRM detectado: {response_data['drm_detected']}")
+            
+            return jsonify(response_data)
+        else:
+            return jsonify({
+                'success': False,
+                'error': analysis_result.get('error', 'Error en análisis DRM')
+            })
+            
+    except Exception as e:
+        log_to_file(f"Error en analisis DRM: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/drm/decrypt', methods=['POST'])
+def decrypt_drm_endpoint():
+    """Descifra contenido DRM para investigación académica"""
+    if not DRM_AVAILABLE:
+        return jsonify({
+            'success': False, 
+            'error': 'Módulos DRM no disponibles'
+        })
+    
+    try:
+        data = request.get_json() or {}
+        analysis_file = data.get('analysis_file')
+        max_workers = data.get('max_workers', 20)
+        
+        # Si no se especifica archivo, buscar el más reciente
+        if not analysis_file:
+            analysis_dir = "drm_research/analysis"
+            if os.path.exists(analysis_dir):
+                json_files = [f for f in os.listdir(analysis_dir) if f.startswith('drm_analysis_') and f.endswith('.json')]
+                if json_files:
+                    # Ordenar por timestamp en el nombre (más reciente primero)
+                    json_files.sort(reverse=True)
+                    analysis_file = os.path.join(analysis_dir, json_files[0])
+                    log_to_file(f"Usando análisis más reciente: {analysis_file}")
+                else:
+                    return jsonify({'success': False, 'error': 'No se encontraron archivos de análisis DRM'})
+            else:
+                return jsonify({'success': False, 'error': 'Directorio de análisis DRM no encontrado'})
+        
+        # Verificar que el archivo existe
+        if not os.path.exists(analysis_file):
+            return jsonify({'success': False, 'error': 'Archivo de análisis no encontrado'})
+        
+        log_to_file(f"Iniciando descifrado DRM desde: {analysis_file}")
+        
+        # Generar ID único para el proceso de descifrado
+        decrypt_id = str(uuid.uuid4())[:8]
+        
+        # Función callback para actualizar progreso
+        def update_progress(progress_data):
+            drm_key = f"drm_{decrypt_id}"
+            if drm_key not in multi_progress:
+                multi_progress[drm_key] = {
+                    'id': decrypt_id,
+                    'type': 'drm_decrypt',
+                    'status': 'processing'
+                }
+            
+            # Actualizar con datos de progreso
+            multi_progress[drm_key].update(progress_data)
+            multi_progress[drm_key]['id'] = decrypt_id
+            multi_progress[drm_key]['type'] = 'drm_decrypt'
+        
+        # Ejecutar descifrado en hilo separado
+        def decrypt_process():
+            try:
+                # Inicializar estado en progreso
+                multi_progress[f"drm_{decrypt_id}"] = {
+                    'id': decrypt_id,
+                    'type': 'drm_decrypt',
+                    'status': 'processing',
+                    'timestamp': time.time()
+                }
+                
+                result = decrypt_drm_content(analysis_file, max_workers, progress_callback=update_progress)
+                
+                # Agregar tiempos de inicio y fin al resultado final
+                if 'stats' in result:
+                    stats = result['stats']
+                    if stats.get('start_time') and stats.get('end_time'):
+                        start_time = stats['start_time'].timestamp() if hasattr(stats['start_time'], 'timestamp') else stats['start_time']
+                        end_time = stats['end_time'].timestamp() if hasattr(stats['end_time'], 'timestamp') else stats['end_time']
+                        result['start_time'] = start_time
+                        result['end_time'] = end_time
+                
+                # Guardar resultado en variable global para consulta
+                multi_progress[f"drm_{decrypt_id}"] = {
+                    'id': decrypt_id,
+                    'type': 'drm_decrypt',
+                    'status': 'completed' if result['success'] else 'failed',
+                    'result': result,
+                    'start_time': result.get('start_time'),
+                    'end_time': result.get('end_time'),
+                    'timestamp': time.time()
+                }
+                
+                log_to_file(f"Descifrado DRM completado - ID: {decrypt_id}")
+                
+            except Exception as e:
+                multi_progress[f"drm_{decrypt_id}"] = {
+                    'id': decrypt_id,
+                    'type': 'drm_decrypt',
+                    'status': 'failed',
+                    'error': str(e),
+                    'timestamp': time.time()
+                }
+                log_to_file(f"Error en descifrado DRM: {str(e)}")
+        
+        # Iniciar proceso en hilo separado
+        thread = threading.Thread(target=decrypt_process)
+        thread.daemon = True
+        thread.start()
+        
+        # Guardar estado inicial
+        multi_progress[f"drm_{decrypt_id}"] = {
+            'id': decrypt_id,
+            'type': 'drm_decrypt',
+            'status': 'processing',
+            'analysis_file': analysis_file,
+            'max_workers': max_workers,
+            'timestamp': time.time()
+        }
+        
+        return jsonify({
+            'success': True,
+            'decrypt_id': decrypt_id,
+            'message': 'Descifrado DRM iniciado'
+        })
+        
+    except Exception as e:
+        log_to_file(f"Error iniciando descifrado DRM: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/drm/status/<decrypt_id>', methods=['GET'])
+def get_drm_status(decrypt_id):
+    """Obtiene el estado del proceso de descifrado DRM"""
+    drm_key = f"drm_{decrypt_id}"
+    
+    if drm_key in multi_progress:
+        status_data = multi_progress[drm_key].copy()
+        
+        # Agregar información adicional si está disponible
+        if status_data.get('status') == 'completed' and 'result' in status_data:
+            result = status_data['result']
+            if 'stats' in result:
+                stats = result['stats']
+                status_data.update({
+                    'total_segments': stats.get('total_segments', 0),
+                    'decrypted_successfully': stats.get('decrypted_successfully', 0),
+                    'decryption_failed': stats.get('decryption_failed', 0),
+                    'keys_obtained': stats.get('keys_obtained', 0)
+                })
+            
+            # Agregar información de claves de descifrado
+            if 'decryption_keys' in result:
+                status_data['decryption_keys'] = result['decryption_keys']
+            
+            # Agregar información de unión de segmentos
+            if 'merge_result' in result:
+                status_data['merge_result'] = result['merge_result']
+        
+        return jsonify({'success': True, 'status': status_data})
+    else:
+        return jsonify({'success': False, 'error': 'ID de descifrado no encontrado'})
+
+@app.route('/api/drm/check', methods=['GET'])
+def check_drm_availability():
+    """Verifica si los módulos DRM están disponibles"""
+    return jsonify({
+        'success': True,
+        'drm_available': DRM_AVAILABLE,
+        'message': 'Módulos DRM disponibles para investigación académica' if DRM_AVAILABLE else 'Módulos DRM no disponibles'
+    })
 
 if __name__ == '__main__':
     # Inicializar sistema de logging
