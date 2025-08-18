@@ -3,3 +3,6 @@ pip install -r requirements.txt
 
 #Ejecutar aplicativo
 py app.py
+
+#Levantar claude
+claude --dangerously-skip-permissions
