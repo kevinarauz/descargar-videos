@@ -9,6 +9,9 @@ from datetime import datetime
 from subprocess import run as subprocess_run, CalledProcessError
 from flask import Flask, render_template_string, request, send_file, jsonify
 from m3u8_downloader import M3U8Downloader
+import urllib3
+# Suprimir warnings de SSL no verificado
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Importar módulos DRM para investigación académica
 try:
@@ -4538,7 +4541,7 @@ def extract_m3u8_metadata(m3u8_url):
         }
         
         try:
-            response = requests.get(m3u8_url, headers=headers, timeout=15)
+            response = requests.get(m3u8_url, headers=headers, timeout=15, verify=False)
             response.raise_for_status()
             content = response.text
             
@@ -5939,7 +5942,7 @@ def parse_master_playlist(m3u8_url):
     
     try:
         log_to_file(f"🔍 Analizando URL: {m3u8_url}")
-        response = requests.get(m3u8_url, timeout=10)
+        response = requests.get(m3u8_url, timeout=10, verify=False)
         response.raise_for_status()
         content = response.text
         
