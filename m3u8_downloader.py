@@ -46,6 +46,11 @@ class M3U8Downloader:
         # Session reutilizable para conexiones persistentes
         self.session = requests.Session()
         self.session.headers.update(self.headers)
+        # Deshabilitar verificación SSL para evitar errores con certificados auto-firmados
+        self.session.verify = False
+        # Suprimir warnings de SSL no verificado
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         # Configuración optimizada de la sesión
         adapter = HTTPAdapter(
             pool_connections=max_workers,  # Pool de conexiones
