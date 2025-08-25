@@ -13,6 +13,9 @@ Uso: Solo para fines académicos y de investigación
 """
 
 import requests
+import urllib3
+# Suprimir warnings de SSL no verificado
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import re
 import os
 import struct
@@ -54,6 +57,7 @@ class DRMResearchModule:
         self.thesis_mode = thesis_mode
         self.research_dir = research_dir
         self.session = requests.Session()
+        self.session.verify = False  # Deshabilitar verificación SSL para certificados auto-firmados
         self.setup_research_environment()
         self.analysis_log = []
         

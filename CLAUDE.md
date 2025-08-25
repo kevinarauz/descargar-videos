@@ -56,6 +56,7 @@ Verificar instalación: `ffmpeg -version`
 - Sesión HTTP optimizada con pooling de conexiones
 - Tamaños de chunk de 8MB para transferencias de alta velocidad
 - Headers de compresión (Brotli/gzip) para eficiencia de ancho de banda
+- **Soporte SSL completo**: Verificación SSL deshabilitada para manejar certificados auto-firmados
 
 **Gestión de Descargas**
 - Capacidad de reanudar descargas interrumpidas
@@ -393,3 +394,34 @@ FFmpeg progreso: 78%
 📊 697 de 700 segmentos (3 omitidos por corrupción)
 🔑 2 claves AES-128 obtenidas
 ```
+
+### Soporte SSL y Certificados Auto-firmados
+
+El sistema incluye soporte completo para URLs con certificados SSL auto-firmados o no válidos:
+
+**Componentes con SSL Deshabilitado:**
+- `M3U8Downloader` (m3u8_downloader.py): Session principal con `verify=False`
+- `DRMResearchModule` (drm_research_module.py): Análisis DRM con certificados no válidos
+- `DRMDecryptionModule` (drm_decryption_module.py): Descifrado con soporte SSL flexible
+- Endpoints API (app.py): Análisis de metadata y parsing de Master Playlist
+
+**Configuración Aplicada:**
+```python
+# En todos los módulos
+session.verify = False
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+```
+
+**URLs Soportadas:**
+- ✅ HTTPS con certificados válidos
+- ✅ HTTPS con certificados auto-firmados
+- ✅ HTTPS con certificados expirados
+- ✅ HTTP estándar
+- ✅ Certificados con nombres de host no coincidentes
+
+**Uso Seguro:**
+La deshabilitación de SSL verification está limitada a:
+- Descarga de contenido multimedia público
+- Análisis académico de protocolos DRM
+- Entornos de desarrollo y pruebas
+- URLs proporcionadas explícitamente por el usuario

@@ -17,6 +17,9 @@ import os
 import json
 import struct
 import requests
+import urllib3
+# Suprimir warnings de SSL no verificado
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -50,6 +53,7 @@ class DRMDecryptionModule:
         self.analysis_file = analysis_file
         self.output_dir = output_dir
         self.session = requests.Session()
+        self.session.verify = False  # Deshabilitar verificación SSL para certificados auto-firmados
         self.progress_callback = progress_callback
         self.decryption_stats = {
             'total_segments': 0,
