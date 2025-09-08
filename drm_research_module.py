@@ -183,13 +183,19 @@ class DRMResearchModule:
             'raw_content': manifest_content
         }
         
-        # Extraer segmentos
-        segment_pattern = r'([^\n]+\.ts[^\n]*)'
-        segments = re.findall(segment_pattern, manifest_content)
+        # Extraer segmentos (incluyendo formatos disfrazados)
+        lines = manifest_content.split('\n')
+        segments = []
         
-        for segment in segments:
-            segment_url = urljoin(m3u8_url, segment.strip())
-            manifest_info['segments'].append(segment_url)
+        for line in lines:
+            line = line.strip()
+            # Buscar líneas que no son comentarios y contienen URLs de segmentos
+            if line and not line.startswith('#'):
+                # Detectar diferentes formatos de segmentos
+                if any(ext in line.lower() for ext in ['.ts', '.m4s', '.jpg', '.jpeg', '.png', '.gif']):
+                    segment_url = urljoin(m3u8_url, line)
+                    segments.append(segment_url)
+                    manifest_info['segments'].append(segment_url)
         
         # Extraer información de claves de encriptación
         key_pattern = r'#EXT-X-KEY:([^\n]+)'
@@ -320,7 +326,8 @@ class DRMResearchModule:
                         'size': len(segment_data),
                         'first_bytes': segment_data[:16].hex() if len(segment_data) >= 16 else '',
                         'has_sync_byte': segment_data[0] == 0x47 if len(segment_data) > 0 else False,
-                        'appears_encrypted': not (segment_data[0] == 0x47 if len(segment_data) > 0 else False)
+                        'appears_encrypted': not (segment_data[0] == 0x47 if len(segment_data) > 0 else False),
+                        'is_disguised_format': self._detect_disguised_format(segment_url, segment_data)
                     }
                     
                     segment_analysis['segment_characteristics'][f'segment_{i}'] = characteristics
@@ -375,6 +382,103 @@ class DRMResearchModule:
         )
         
         return decryption_results
+    
+    def _detect_disguised_format(self, segment_url: str, segment_data: bytes) -> Dict[str, str]:
+        """
+        Detecta si un segmento está disfrazado (ej: .jpg que en realidad es .ts encriptado)
+        
+        Args:
+            segment_url (str): URL del segmento
+            segment_data (bytes): Datos del segmento
+            
+        Returns:
+            Dict: Información sobre el disfraz detectado
+        """
+        disguise_info = {
+            'is_disguised': False,
+            'url_extension': '',
+            'actual_format': 'unknown',
+            'disguise_type': 'none'
+        }
+        
+        # Extraer extensión de la URL
+        url_extension = segment_url.split('.')[-1].lower() if '.' in segment_url else ''
+        disguise_info['url_extension'] = url_extension
+        
+        if len(segment_data) < 16:
+            return disguise_info
+            
+        # Obtener primeros bytes
+        first_bytes = segment_data[:16]
+        
+        # Detectar diferentes tipos de disfraz
+        if url_extension in ['jpg', 'jpeg', 'png', 'gif']:
+            # URLs con extensiones de imagen pero contenido diferente
+            if not self._is_valid_image(first_bytes):
+                disguise_info['is_disguised'] = True
+                disguise_info['disguise_type'] = f'fake_{url_extension}'
+                
+                # Determinar formato real basado en contenido
+                if first_bytes[0] == 0x47:
+                    disguise_info['actual_format'] = 'mpeg_ts'
+                elif self._appears_aes_encrypted(first_bytes):
+                    disguise_info['actual_format'] = 'aes_encrypted_ts'
+                else:
+                    disguise_info['actual_format'] = 'encrypted_data'
+                    
+        elif url_extension in ['ts', 'm4s']:
+            # Verificar si el contenido TS es válido
+            if first_bytes[0] != 0x47:
+                if self._appears_aes_encrypted(first_bytes):
+                    disguise_info['is_disguised'] = True
+                    disguise_info['disguise_type'] = 'encrypted_ts'
+                    disguise_info['actual_format'] = 'aes_encrypted_ts'
+        
+        return disguise_info
+    
+    def _is_valid_image(self, data: bytes) -> bool:
+        """Verifica si los datos corresponden a una imagen válida"""
+        if len(data) < 4:
+            return False
+            
+        # Firmas de archivos de imagen
+        image_signatures = [
+            b'\xFF\xD8\xFF',  # JPEG
+            b'\x89PNG',       # PNG
+            b'GIF87a',        # GIF87a
+            b'GIF89a',        # GIF89a
+        ]
+        
+        for signature in image_signatures:
+            if data.startswith(signature):
+                return True
+        return False
+    
+    def _appears_aes_encrypted(self, data: bytes) -> bool:
+        """Detecta si los datos parecen estar encriptados con AES"""
+        if len(data) < 16:
+            return False
+            
+        # Los datos encriptados con AES tienden a tener alta entropía
+        # y no empezar con patrones conocidos
+        first_4_bytes = data[:4]
+        
+        # No debería empezar con sync byte MPEG-TS
+        if data[0] == 0x47:
+            return False
+            
+        # Verificar que no sea texto plano
+        try:
+            data[:16].decode('ascii')
+            return False  # Si se puede decodificar como ASCII, probablemente no esté encriptado
+        except UnicodeDecodeError:
+            pass
+            
+        # Verificar entropía alta (datos aleatorios)
+        unique_bytes = len(set(data[:16]))
+        entropy_ratio = unique_bytes / 16
+        
+        return entropy_ratio > 0.5  # Alta variedad en los primeros 16 bytes
     
     def generate_academic_findings(self, analysis_results: Dict) -> List[str]:
         """Genera hallazgos académicos para la tesis"""

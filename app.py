@@ -17,6 +17,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 try:
     from drm_research_module import DRMResearchModule
     from drm_decryption_module import DRMDecryptionModule, decrypt_drm_content
+    from aes_decryptor import AESDecryptor
     DRM_AVAILABLE = True
     print("Modulos DRM disponibles para investigacion academica")
 except ImportError as e:
@@ -6716,6 +6717,197 @@ def check_drm_availability():
         'drm_available': DRM_AVAILABLE,
         'message': 'Módulos DRM disponibles para investigación académica' if DRM_AVAILABLE else 'Módulos DRM no disponibles'
     })
+
+@app.route('/api/aes/decrypt_download', methods=['POST'])
+def aes_decrypt_download():
+    """Descarga y descifra contenido AES-128 disfrazado (ej: .jpg que son .ts encriptados)"""
+    if not DRM_AVAILABLE:
+        return jsonify({
+            'success': False, 
+            'error': 'Módulos de descifrado no disponibles'
+        })
+    
+    try:
+        # Verificar límite de descargas concurrentes
+        active_downloads = sum(1 for d in multi_progress.values() if d['status'] == 'downloading')
+        if active_downloads >= MAX_CONCURRENT_DOWNLOADS:
+            return jsonify({
+                'error': f'Máximo {MAX_CONCURRENT_DOWNLOADS} descargas simultáneas permitidas. Espera a que termine alguna.'
+            }), 429
+        
+        # Obtener datos del request
+        if request.content_type == 'application/json':
+            data = request.get_json() or {}
+            m3u8_url = data.get('m3u8_url', '').strip()
+            output_name = data.get('output_name', '').strip()
+        else:
+            # Soportar tanto JSON como form data
+            m3u8_url = request.form.get('m3u8_url', '').strip()
+            output_name = request.form.get('output_name', '').strip()
+        
+        # Validaciones
+        if not m3u8_url:
+            return jsonify({'error': 'URL M3U8 no proporcionada'}), 400
+        
+        if not is_valid_m3u8_url(m3u8_url):
+            return jsonify({'error': 'URL M3U8 no válida'}), 400
+        
+        if not output_name:
+            output_name = f"aes_decrypted_{int(time.time())}"
+        
+        # Generar ID único para la descarga
+        download_id = str(uuid.uuid4())[:8]
+        
+        # Configurar progreso inicial
+        multi_progress[download_id] = {
+            'url': m3u8_url,
+            'status': 'analyzing',
+            'porcentaje': 0,
+            'current': 0,
+            'total': 0,
+            'start_time': time.time(),
+            'output_file': f"{output_name}.mp4",
+            'quality': 'AES-128 Decrypted',
+            'can_resume': False,
+            'error': None,
+            'last_update_time': time.time(),
+            'download_speed': 0.0,
+            'bytes_downloaded': 0,
+            'last_bytes': 0,
+            'downloaded_segments': [],
+            'elapsed_time': 0,
+            'estimated_time': 0,
+            'total_time': 0,
+            'elapsed_time_formatted': "00:00",
+            'estimated_time_formatted': "00:00", 
+            'total_time_formatted': "00:00"
+        }
+        
+        # Función de callback para reportar progreso
+        def progress_callback(progress_data):
+            if download_id in multi_progress:
+                multi_progress[download_id].update({
+                    'porcentaje': int((progress_data['segment_index'] / max(progress_data['total_segments'], 1)) * 100),
+                    'current': progress_data['segment_index'],
+                    'total': progress_data['total_segments'],
+                    'status': 'decrypting' if progress_data['status'] == 'decrypted' else 'downloading',
+                    'last_update_time': time.time()
+                })
+        
+        # Lanzar descarga en hilo separado
+        thread = threading.Thread(
+            target=process_aes_download,
+            args=(download_id, m3u8_url, output_name, progress_callback)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        log_to_file(f"Iniciando descarga AES-128: {m3u8_url} -> {output_name}")
+        
+        return jsonify({'download_id': download_id}), 202
+        
+    except Exception as e:
+        log_to_file(f"Error iniciando descarga AES: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def process_aes_download(download_id: str, m3u8_url: str, output_name: str, progress_callback):
+    """Procesa descarga con descifrado AES-128"""
+    try:
+        # 1. Analizar M3U8 para detectar encriptación
+        multi_progress[download_id]['status'] = 'analyzing'
+        log_to_file(f"[{download_id}] Analizando M3U8 para encriptación AES-128")
+        
+        drm_module = DRMResearchModule()
+        analysis_result = drm_module.analyze_m3u8_drm(m3u8_url)
+        
+        if not analysis_result.get('success'):
+            multi_progress[download_id]['status'] = 'error'
+            multi_progress[download_id]['error'] = 'Error analizando M3U8'
+            return
+        
+        # 2. Extraer información de encriptación
+        manifest_info = analysis_result.get('manifest_info', {})
+        encryption_keys = manifest_info.get('encryption_keys', [])
+        segments = manifest_info.get('segments', [])
+        
+        if not encryption_keys:
+            multi_progress[download_id]['status'] = 'error'
+            multi_progress[download_id]['error'] = 'No se encontraron claves de encriptación AES-128'
+            return
+        
+        if not segments:
+            multi_progress[download_id]['status'] = 'error'
+            multi_progress[download_id]['error'] = 'No se encontraron segmentos para descargar'
+            return
+        
+        multi_progress[download_id]['total'] = len(segments)
+        log_to_file(f"[{download_id}] Encontrados {len(segments)} segmentos y {len(encryption_keys)} claves")
+        
+        # 3. Crear descifrador AES
+        aes_decryptor = AESDecryptor()
+        
+        # 4. Descifrar segmentos
+        multi_progress[download_id]['status'] = 'downloading'
+        temp_decrypt_dir = f"temp_decrypted_{download_id}"
+        
+        decrypt_results = aes_decryptor.decrypt_disguised_segments(
+            segments=segments,
+            encryption_keys=encryption_keys,
+            output_dir=temp_decrypt_dir,
+            progress_callback=progress_callback
+        )
+        
+        if decrypt_results['decrypted_segments'] == 0:
+            multi_progress[download_id]['status'] = 'error'
+            multi_progress[download_id]['error'] = 'No se pudo descifrar ningún segmento'
+            return
+        
+        # 5. Unir segmentos descifrados con FFmpeg
+        multi_progress[download_id]['status'] = 'merging'
+        output_path = get_organized_path(f"{output_name}.mp4")
+        
+        log_to_file(f"[{download_id}] Uniendo {decrypt_results['decrypted_segments']} segmentos descifrados")
+        
+        # Crear lista de archivos para FFmpeg
+        file_list_path = os.path.join(temp_decrypt_dir, 'filelist.txt')
+        with open(file_list_path, 'w') as f:
+            for decrypted_file in sorted(decrypt_results['decrypted_files']):
+                f.write(f"file '{os.path.abspath(decrypted_file)}'\n")
+        
+        # Ejecutar FFmpeg
+        ffmpeg_command = [
+            'ffmpeg', '-f', 'concat', '-safe', '0', '-i', file_list_path,
+            '-c', 'copy', output_path, '-y'
+        ]
+        
+        result = subprocess_run(ffmpeg_command, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            # Éxito
+            multi_progress[download_id]['status'] = 'completed'
+            multi_progress[download_id]['porcentaje'] = 100
+            multi_progress[download_id]['output_file'] = output_path
+            
+            # Limpiar archivos temporales
+            import shutil
+            try:
+                shutil.rmtree(temp_decrypt_dir)
+            except:
+                pass
+            
+            # Guardar metadatos
+            save_video_metadata_with_path(output_path, m3u8_url)
+            
+            log_to_file(f"[{download_id}] ✅ Descarga AES-128 completada: {output_path}")
+        else:
+            multi_progress[download_id]['status'] = 'error'
+            multi_progress[download_id]['error'] = f'Error en FFmpeg: {result.stderr}'
+            log_to_file(f"[{download_id}] ❌ Error FFmpeg: {result.stderr}")
+            
+    except Exception as e:
+        multi_progress[download_id]['status'] = 'error'
+        multi_progress[download_id]['error'] = f'Error procesando descarga AES: {str(e)}'
+        log_to_file(f"[{download_id}] ❌ Error: {str(e)}")
 
 if __name__ == '__main__':
     # Inicializar sistema de logging

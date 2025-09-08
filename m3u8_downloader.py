@@ -1,6 +1,6 @@
 import os
 import time
-from typing import Optional, Callable, List, Tuple, Union
+from typing import Optional, Callable, List, Tuple, Union, Dict
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -168,7 +168,7 @@ class M3U8Downloader:
         return list(all_segments)
 
     def _validate_ts_segment(self, segment_path: str) -> bool:
-        """Valida que un archivo sea un segmento MPEG-TS válido"""
+        """Valida que un archivo sea un segmento MPEG-TS válido o encriptado válido"""
         try:
             if not os.path.exists(segment_path):
                 return False
@@ -177,27 +177,116 @@ class M3U8Downloader:
             if file_size < 188:  # Tamaño mínimo de un paquete MPEG-TS
                 return False
             
-            # MPEG-TS debe comenzar con sync byte 0x47
             with open(segment_path, 'rb') as f:
                 first_bytes = f.read(16)  # Leer más bytes para mejor detección
                 
-                # Buscar sync byte 0x47 al inicio o en las primeras posiciones
-                # A veces hay headers antes del sync byte
+                # 1. Verificar si es MPEG-TS válido (sync byte 0x47)
                 for i in range(min(4, len(first_bytes))):
                     if first_bytes[i] == 0x47:
                         return True
                 
-                # Si no encontramos 0x47, verificar si es un archivo de error HTML/texto
+                # 2. Verificar si es contenido encriptado válido (AES-128)
+                if self._is_valid_encrypted_segment(first_bytes):
+                    self.log_function(f"✅ Segmento encriptado válido detectado: {segment_path}")
+                    return True
+                
+                # 3. Si no encontramos 0x47 ni encriptación, verificar errores HTML/texto
                 try:
                     text_content = first_bytes.decode('utf-8', errors='ignore').lower()
                     if any(keyword in text_content for keyword in ['<html', '<!doctype', 'error', '404', '403']):
+                        self.log_function(f"❌ Contenido HTML/error detectado: {text_content[:50]}...")
                         return False
                 except:
                     pass
+                
+                # 4. Log para debugging de contenido desconocido
+                first_hex = first_bytes.hex()
+                self.log_function(f"❓ DETECTADO: Formato desconocido - posible corrupción de red")
+                self.log_function(f"📁 Archivo: {segment_path}, Tamaño: {file_size} bytes")
+                self.log_function(f"🔍 Primeros bytes: {first_hex}")
+                
+                # Nuevo: Detectar formatos disfrazados
+                disguise_info = self._detect_disguised_format(segment_path, first_bytes)
+                if disguise_info['is_disguised']:
+                    self.log_function(f"🎭 FORMATO DISFRAZADO: {disguise_info['disguise_type']} -> {disguise_info['actual_format']}")
+                    # Los archivos disfrazados necesitan descifrado especial
+                    return True
                     
                 return False
         except Exception as e:
+            self.log_function(f"❌ Error validando segmento {segment_path}: {e}")
             return False
+    
+    def _is_valid_encrypted_segment(self, data: bytes) -> bool:
+        """Detecta si un segmento está encriptado correctamente"""
+        if len(data) < 16:
+            return False
+            
+        # Los datos encriptados con AES tienen alta entropía
+        unique_bytes = len(set(data))
+        entropy_ratio = unique_bytes / len(data)
+        
+        # Si tiene alta entropía y no es texto plano, probablemente esté encriptado
+        if entropy_ratio > 0.6:
+            try:
+                # No debería ser decodificable como texto
+                data.decode('utf-8')
+                return False  # Si es texto, no está encriptado
+            except UnicodeDecodeError:
+                # No es texto plano, probablemente encriptado
+                return True
+        
+        return False
+    
+    def _detect_disguised_format(self, segment_path: str, data: bytes) -> Dict[str, str]:
+        """Detecta si un segmento está disfrazado (ej: .jpg que es .ts encriptado)"""
+        disguise_info = {
+            'is_disguised': False,
+            'url_extension': '',
+            'actual_format': 'unknown',
+            'disguise_type': 'none'
+        }
+        
+        # Extraer extensión del archivo
+        url_extension = os.path.splitext(segment_path)[1].lower().replace('.', '')
+        disguise_info['url_extension'] = url_extension
+        
+        if len(data) < 4:
+            return disguise_info
+        
+        # Detectar archivos con extensión de imagen pero contenido diferente
+        if url_extension in ['jpg', 'jpeg', 'png', 'gif']:
+            if not self._is_valid_image_header(data):
+                disguise_info['is_disguised'] = True
+                disguise_info['disguise_type'] = f'fake_{url_extension}'
+                
+                # Determinar formato real
+                if data[0] == 0x47:
+                    disguise_info['actual_format'] = 'mpeg_ts'
+                elif self._is_valid_encrypted_segment(data):
+                    disguise_info['actual_format'] = 'aes_encrypted_ts'
+                else:
+                    disguise_info['actual_format'] = 'encrypted_data'
+        
+        return disguise_info
+    
+    def _is_valid_image_header(self, data: bytes) -> bool:
+        """Verifica si los datos tienen headers válidos de imagen"""
+        if len(data) < 4:
+            return False
+            
+        # Firmas de archivos de imagen comunes
+        image_signatures = [
+            b'\xFF\xD8\xFF',  # JPEG
+            b'\x89PNG',       # PNG  
+            b'GIF87a',        # GIF87a
+            b'GIF89a'         # GIF89a
+        ]
+        
+        for signature in image_signatures:
+            if data.startswith(signature):
+                return True
+        return False
 
     def _download_segment(self, url: str, index: int) -> Optional[Tuple[str, int]]:
         segment_filename = f'segment_{index:05d}.ts'
