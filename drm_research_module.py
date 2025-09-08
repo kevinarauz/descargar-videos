@@ -207,7 +207,55 @@ class DRMResearchModule:
         
         self.logger.info(f"Manifest analizado: {len(segments)} segmentos, {len(key_lines)} claves")
         
+        # Si es Master Playlist y no tiene claves, analizar el child playlist
+        if manifest_info['is_master_playlist'] and not manifest_info['has_encryption']:
+            self.logger.info("Master Playlist detectado sin claves, analizando child playlist...")
+            child_url = self._get_best_quality_child_playlist(m3u8_url, manifest_content)
+            if child_url and child_url != m3u8_url:
+                self.logger.info(f"Analizando child playlist: {child_url}")
+                child_manifest = self.analyze_manifest(child_url)
+                # Combinar información relevante del child playlist
+                if child_manifest['has_encryption'] or child_manifest['segments']:
+                    manifest_info.update({
+                        'child_url': child_url,
+                        'segments': child_manifest['segments'],
+                        'encryption_keys': child_manifest['encryption_keys'],
+                        'has_encryption': child_manifest['has_encryption'],
+                        'child_content': child_manifest['raw_content']
+                    })
+                    self.logger.info(f"Child playlist analizado: {len(child_manifest['segments'])} segmentos, {len(child_manifest['encryption_keys'])} claves")
+        
         return manifest_info
+    
+    def _get_best_quality_child_playlist(self, m3u8_url: str, manifest_content: str) -> str:
+        """Obtiene la URL del child playlist de mejor calidad desde un Master Playlist"""
+        best_url = None
+        best_bandwidth = 0
+        
+        lines = manifest_content.strip().split('\n')
+        
+        for i, line in enumerate(lines):
+            if line.startswith('#EXT-X-STREAM-INF'):
+                # Extraer BANDWIDTH
+                bandwidth_match = re.search(r'BANDWIDTH=(\d+)', line)
+                bandwidth = int(bandwidth_match.group(1)) if bandwidth_match else 0
+                
+                # La siguiente línea debe contener la URL
+                if i + 1 < len(lines):
+                    url_line = lines[i + 1].strip()
+                    if url_line and not url_line.startswith('#'):
+                        # Convertir URL relativa a absoluta
+                        if url_line.startswith('http'):
+                            quality_url = url_line
+                        else:
+                            quality_url = urljoin(m3u8_url, url_line)
+                        
+                        # Mantener la mejor calidad (mayor bandwidth)
+                        if bandwidth > best_bandwidth:
+                            best_bandwidth = bandwidth
+                            best_url = quality_url
+        
+        return best_url
     
     def parse_encryption_key_line(self, key_line: str, base_url: str) -> Dict:
         """Parsea línea EXT-X-KEY para extraer información de encriptación"""

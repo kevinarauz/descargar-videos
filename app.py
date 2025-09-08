@@ -4051,7 +4051,18 @@ function displayDRMResults(data) {
     
     if (data.drm_detected) {
         html += '<div class="d-grid gap-2">';
-        html += `<button class="btn btn-warning" onclick="startDRMDecryption()">🔓 Descifrar DRM</button>`;
+        
+        // Si tiene AES-128, mostrar botón específico para AES
+        if (data.has_aes128) {
+            html += `<button class="btn btn-success" onclick="startAESDecryption()">🔑 Descifrar AES-128</button>`;
+            html += `<small class="text-muted">Detectado: ${data.aes_keys.length} clave(s) AES-128</small>`;
+        }
+        
+        // Botón genérico para otros tipos de DRM
+        if (data.encryption_methods.some(method => method !== 'AES-128')) {
+            html += `<button class="btn btn-warning" onclick="startDRMDecryption()">🔓 Descifrar DRM Avanzado</button>`;
+        }
+        
         html += `<button class="btn btn-outline-secondary" onclick="showAnalysisReport('${data.academic_report}')">📋 Ver Reporte Académico</button>`;
         html += '</div>';
     } else {
@@ -4093,6 +4104,44 @@ function startDRMDecryption() {
         if (data.success) {
             // Monitorear progreso
             monitorDRMProgress(data.decrypt_id);
+        } else {
+            contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+        }
+    })
+    .catch(error => {
+        contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    });
+}
+
+function startAESDecryption() {
+    const progressDiv = document.getElementById('drm-decrypt-progress');
+    const contentDiv = document.getElementById('drm-decrypt-content');
+    const urlInput = document.getElementById('url');
+    const filenameInput = document.getElementById('filename');
+    
+    progressDiv.style.display = 'block';
+    contentDiv.innerHTML = '<div class="text-center"><div class="spinner-border text-success" role="status"></div><p class="mt-2">Iniciando descifrado AES-128...</p></div>';
+    
+    // Iniciar descifrado AES-128
+    fetch('/api/aes/decrypt_download', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+            m3u8_url: urlInput.value,
+            output_name: filenameInput.value || 'video_aes_descifrado',
+            max_workers: 20 
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Monitorear progreso usando el sistema estándar de descargas
+            contentDiv.innerHTML = `<div class="alert alert-success">✅ Descarga AES-128 iniciada correctamente</div>`;
+            
+            // Agregar descarga a la lista principal y monitorear
+            window.location.reload(); // Refrescar para ver progreso en la interfaz principal
         } else {
             contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
         }
@@ -6531,14 +6580,48 @@ def analyze_drm_endpoint():
             # Los datos están directamente en analysis_result
             manifest_info = analysis_result.get('manifest_info', {})
             
+            # Detectar tipos de encriptación
+            encryption_keys = manifest_info.get('encryption_keys', [])
+            encryption_methods = [key.get('method') for key in encryption_keys]
+            has_aes128 = 'AES-128' in encryption_methods
+            
+            # Función para limpiar objetos bytes recursivamente
+            def clean_bytes_objects(obj):
+                if isinstance(obj, bytes):
+                    return f"<bytes object: {len(obj)} bytes>"
+                elif isinstance(obj, dict):
+                    return {k: clean_bytes_objects(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [clean_bytes_objects(item) for item in obj]
+                else:
+                    return obj
+            
+            # Preparar datos serializables (sin bytes objects)
+            safe_analysis_data = clean_bytes_objects({
+                'success': analysis_result.get('success', False),
+                'manifest_info': {
+                    'url': manifest_info.get('url', ''),
+                    'is_master_playlist': manifest_info.get('is_master_playlist', False),
+                    'has_encryption': manifest_info.get('has_encryption', False),
+                    'segments_count': len(manifest_info.get('segments', [])),
+                    'encryption_keys': manifest_info.get('encryption_keys', []),
+                    'child_url': manifest_info.get('child_url', ''),
+                },
+                'academic_report': analysis_result.get('academic_report', ''),
+                'academic_findings': analysis_result.get('academic_findings', [])
+            })
+            
             # Preparar respuesta
             response_data = {
                 'success': True,
-                'drm_detected': len(manifest_info.get('encryption_keys', [])) > 0,
-                'encryption_methods': [key.get('method') for key in manifest_info.get('encryption_keys', [])],
+                'drm_detected': len(encryption_keys) > 0,
+                'encryption_methods': encryption_methods,
+                'has_aes128': has_aes128,
+                'aes_keys': clean_bytes_objects([key for key in encryption_keys if key.get('method') == 'AES-128']),
                 'total_segments': len(manifest_info.get('segments', [])),
-                'analysis_data': analysis_result,  # Pasar todos los datos de análisis
-                'academic_findings': analysis_result.get('academic_findings', [])
+                'analysis_data': safe_analysis_data,  # Solo datos serializables
+                'academic_findings': analysis_result.get('academic_findings', []),
+                'academic_report': analysis_result.get('academic_report', '')
             }
             
             log_to_file(f"Analisis DRM completado - DRM detectado: {response_data['drm_detected']}")
