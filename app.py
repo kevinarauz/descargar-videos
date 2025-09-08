@@ -3986,13 +3986,16 @@ function selectQuality(qualityUrl, qualityLabel) {
 // ============================================================================
 
 function analyzeDRM() {
-    const urlInput = document.getElementById('m3u8-url');
+    const urlInput = document.getElementById('m3u8-url') || document.getElementById('url');
     const url = urlInput.value.trim();
     
     if (!url) {
         showNotification('Por favor ingresa una URL M3U8 válida', 'warning');
         return;
     }
+    
+    // Almacenar URL globalmente para uso posterior
+    window.currentAnalyzedUrl = url;
     
     const drmContainer = document.getElementById('drm-container');
     const drmContent = document.getElementById('drm-content');
@@ -4116,11 +4119,28 @@ function startDRMDecryption() {
 function startAESDecryption() {
     const progressDiv = document.getElementById('drm-decrypt-progress');
     const contentDiv = document.getElementById('drm-decrypt-content');
-    const urlInput = document.getElementById('url');
-    const filenameInput = document.getElementById('filename');
+    
+    // Obtener URL desde los elementos principales o desde datos almacenados
+    const urlInput = document.getElementById('m3u8-url');
+    const filenameInput = document.getElementById('output-name');
+    
+    // Usar URL almacenada globalmente o desde el input principal
+    const currentUrl = window.currentAnalyzedUrl || (urlInput ? urlInput.value : '');
+    const outputName = (filenameInput ? filenameInput.value : '') || 'video_aes_descifrado';
+    
+    if (!currentUrl) {
+        contentDiv.innerHTML = '<div class="alert alert-danger">Error: No se pudo obtener la URL para descifrar</div>';
+        return;
+    }
     
     progressDiv.style.display = 'block';
-    contentDiv.innerHTML = '<div class="text-center"><div class="spinner-border text-success" role="status"></div><p class="mt-2">Iniciando descifrado AES-128...</p></div>';
+    contentDiv.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-success" role="status"></div>
+            <p class="mt-2">🔑 Iniciando descifrado AES-128...</p>
+            <small class="text-muted">URL: ${currentUrl}</small>
+        </div>
+    `;
     
     // Iniciar descifrado AES-128
     fetch('/api/aes/decrypt_download', {
@@ -4129,19 +4149,39 @@ function startAESDecryption() {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-            m3u8_url: urlInput.value,
-            output_name: filenameInput.value || 'video_aes_descifrado',
+            m3u8_url: currentUrl,
+            output_name: outputName,
             max_workers: 20 
         })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Monitorear progreso usando el sistema estándar de descargas
-            contentDiv.innerHTML = `<div class="alert alert-success">✅ Descarga AES-128 iniciada correctamente</div>`;
+            // Mostrar progreso AES en tiempo real
+            contentDiv.innerHTML = `
+                <div class="alert alert-success mb-3">
+                    ✅ Descarga AES-128 iniciada correctamente
+                    <br><small>ID: ${data.download_id}</small>
+                </div>
+                <div id="aes-progress-container">
+                    <div class="progress mb-2" style="height: 20px;">
+                        <div id="aes-progress-bar" class="progress-bar bg-success progress-bar-striped progress-bar-animated" 
+                             style="width: 0%"></div>
+                    </div>
+                    <div id="aes-progress-text" class="text-center">
+                        <small>Preparando descarga...</small>
+                    </div>
+                    <div id="aes-progress-stats" class="row text-center mt-3">
+                        <div class="col-3"><span id="aes-current">0</span><br><small>Actual</small></div>
+                        <div class="col-3"><span id="aes-total">0</span><br><small>Total</small></div>
+                        <div class="col-3"><span id="aes-elapsed">0m 0s</span><br><small>Transcurrido</small></div>
+                        <div class="col-3"><span id="aes-remaining">--</span><br><small>Restante</small></div>
+                    </div>
+                </div>
+            `;
             
-            // Agregar descarga a la lista principal y monitorear
-            window.location.reload(); // Refrescar para ver progreso en la interfaz principal
+            // Iniciar monitoreo de progreso
+            monitorAESProgress(data.download_id);
         } else {
             contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
         }
@@ -4149,6 +4189,94 @@ function startAESDecryption() {
     .catch(error => {
         contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
     });
+}
+
+function monitorAESProgress(downloadId) {
+    const progressBar = document.getElementById('aes-progress-bar');
+    const progressText = document.getElementById('aes-progress-text');
+    const currentSpan = document.getElementById('aes-current');
+    const totalSpan = document.getElementById('aes-total');
+    const elapsedSpan = document.getElementById('aes-elapsed');
+    const remainingSpan = document.getElementById('aes-remaining');
+    
+    const checkProgress = () => {
+        fetch(`/progress/${downloadId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status) {
+                const status = data.status;
+                const progress = Math.min(100, Math.max(0, status.porcentaje || 0));
+                
+                // Actualizar barra de progreso
+                if (progressBar) progressBar.style.width = `${progress}%`;
+                
+                // Actualizar estadísticas
+                if (currentSpan) currentSpan.textContent = status.current || 0;
+                if (totalSpan) totalSpan.textContent = status.total || 0;
+                
+                // Calcular y mostrar tiempos
+                if (status.start_time) {
+                    const elapsed = (Date.now() / 1000) - status.start_time;
+                    const elapsedMinutes = Math.floor(elapsed / 60);
+                    const elapsedSeconds = Math.floor(elapsed % 60);
+                    if (elapsedSpan) elapsedSpan.textContent = `${elapsedMinutes}m ${elapsedSeconds}s`;
+                    
+                    // Calcular tiempo restante
+                    if (status.current > 0 && status.total > 0) {
+                        const rate = status.current / elapsed;
+                        const remaining = (status.total - status.current) / rate;
+                        if (remaining > 0 && remaining < 7200 && rate > 0) { // Solo si es < 2 horas
+                            const etaMinutes = Math.floor(remaining / 60);
+                            const etaSeconds = Math.floor(remaining % 60);
+                            if (remainingSpan) remainingSpan.textContent = `${etaMinutes}m ${etaSeconds}s`;
+                        } else {
+                            if (remainingSpan) remainingSpan.textContent = 'Calculando...';
+                        }
+                    }
+                }
+                
+                // Actualizar texto de estado
+                if (progressText) {
+                    if (status.status === 'downloading') {
+                        progressText.innerHTML = `<small>🔑 Descifrando segmentos AES-128... (${progress.toFixed(1)}%)</small>`;
+                    } else if (status.status === 'merging') {
+                        progressText.innerHTML = `<small>🔧 Uniendo segmentos descifrados... (${progress.toFixed(1)}%)</small>`;
+                    } else if (status.status === 'completed') {
+                        progressText.innerHTML = `<small>✅ Descifrado AES-128 completado</small>`;
+                    } else if (status.status === 'failed') {
+                        progressText.innerHTML = `<small>❌ Error en descifrado AES-128</small>`;
+                    } else {
+                        progressText.innerHTML = `<small>📥 Procesando... (${progress.toFixed(1)}%)</small>`;
+                    }
+                }
+                
+                // Continuar monitoreando si no está completado
+                if (status.status === 'downloading' || status.status === 'merging') {
+                    setTimeout(checkProgress, 1000);
+                } else if (status.status === 'completed') {
+                    // Mostrar resultado final
+                    if (progressText) {
+                        progressText.innerHTML = `
+                            <div class="alert alert-success">
+                                ✅ <strong>Descifrado AES-128 Completado</strong><br>
+                                📄 Archivo: ${status.output_file || 'video_aes_descifrado.mp4'}<br>
+                                📊 ${status.current}/${status.total} segmentos procesados
+                            </div>
+                        `;
+                    }
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error monitoring AES progress:', error);
+            if (progressText) {
+                progressText.innerHTML = '<small class="text-danger">Error monitoreando progreso</small>';
+            }
+        });
+    };
+    
+    // Iniciar monitoreo
+    checkProgress();
 }
 
 function monitorDRMProgress(decryptId) {
@@ -4345,7 +4473,7 @@ function monitorDRMProgress(decryptId) {
                     if (status.merge_result) {
                         if (status.merge_result.success) {
                             // Extraer solo el nombre del archivo
-                            const fileName = status.merge_result.output_file.split(/[\\\\\/]/).pop();
+                            const fileName = status.merge_result.output_file.replace(/\\/g, '/').split('/').pop();
                             
                             html += '<div class="alert alert-success">';
                             html += '<strong>🎬 Video Final Creado</strong><br>';
