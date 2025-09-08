@@ -92,18 +92,29 @@ class AESDecryptor:
                     results['errors'].append(f"Fallo al descargar segmento {i}: {segment_url}")
                     continue
                 
-                # Determinar clave de descifrado apropiada
-                decryption_key = self._select_decryption_key(decryption_keys, i)
-                if not decryption_key:
-                    results['failed_segments'] += 1
-                    results['errors'].append(f"No hay clave disponible para segmento {i}")
-                    continue
+                # Probar descifrado con múltiples claves si es necesario
+                decrypted_data = None
+                key_attempts = 0
                 
-                # Descifrar segmento
-                decrypted_data = self._decrypt_segment_aes128(encrypted_data, decryption_key, i)
+                # Primero intentar con la clave seleccionada por estrategia
+                primary_key = self._select_decryption_key(decryption_keys, i)
+                if primary_key:
+                    decrypted_data = self._decrypt_segment_aes128(encrypted_data, primary_key, i)
+                    key_attempts += 1
+                
+                # Si falló, probar con todas las claves disponibles
+                if not decrypted_data and len(decryption_keys) > 1:
+                    for key_url, key_data in decryption_keys.items():
+                        if key_data != primary_key:  # No repetir la clave ya probada
+                            decrypted_data = self._decrypt_segment_aes128(encrypted_data, key_data, i)
+                            key_attempts += 1
+                            if decrypted_data:
+                                self.logger.info(f"🔑 Segmento {i}: Descifrado exitoso con clave alternativa ({key_url})")
+                                break
+                
                 if not decrypted_data:
                     results['failed_segments'] += 1
-                    results['errors'].append(f"Fallo al descifrar segmento {i}")
+                    results['errors'].append(f"Segmento {i}: Falló con {key_attempts} claves y {5} estrategias IV")
                     continue
                 
                 # Guardar segmento descifrado
@@ -179,56 +190,120 @@ class AESDecryptor:
             return None
     
     def _select_decryption_key(self, keys: Dict[str, bytes], segment_index: int) -> Optional[bytes]:
-        """Selecciona la clave apropiada para un segmento"""
+        """Selecciona la clave apropiada para un segmento con rotación inteligente"""
         if not keys:
             return None
         
-        # Por ahora usar la primera clave disponible
-        # En implementaciones más avanzadas se podría determinar por patrones en las URLs
-        return list(keys.values())[0]
+        key_list = list(keys.values())
+        
+        # Si solo hay una clave, usarla
+        if len(key_list) == 1:
+            return key_list[0]
+        
+        # Si hay múltiples claves, probar estrategias de rotación
+        if len(key_list) >= 2:
+            # Estrategia 1: Alternar claves cada cierto número de segmentos
+            # Muchos streams HLS cambian de clave cada 10-50 segmentos
+            if segment_index < 10:
+                # Usar primera clave para los primeros segmentos
+                return key_list[0]
+            else:
+                # Alternar entre claves basado en grupos
+                key_group = (segment_index // 50) % len(key_list)
+                return key_list[key_group]
+        
+        return key_list[0]
     
     def _decrypt_segment_aes128(self, encrypted_data: bytes, key: bytes, segment_index: int) -> Optional[bytes]:
-        """Descifra un segmento usando AES-128"""
+        """Descifra un segmento usando AES-128 con múltiples estrategias de IV"""
         try:
-            # Vector de inicialización (IV) para HLS es típicamente el índice del segmento
-            iv = struct.pack('>Q', segment_index) + b'\x00' * 8  # IV de 16 bytes
-            
-            # Crear cipher AES-128-CBC
-            cipher = AES.new(key, AES.MODE_CBC, iv)
-            
-            # Descifrar datos
-            decrypted_data = cipher.decrypt(encrypted_data)
-            
-            # Remover padding PKCS7
-            try:
-                decrypted_data = unpad(decrypted_data, AES.block_size)
-            except ValueError:
-                # Si falla el unpad, es posible que no haya padding
-                pass
-            
-            # Verificar que el resultado sea un segmento TS válido
-            if len(decrypted_data) > 0 and decrypted_data[0] == 0x47:
-                return decrypted_data
-            else:
-                # Intentar con IV=0 (algunos streams usan IV constante)
-                iv_zero = b'\x00' * 16
-                cipher_zero = AES.new(key, AES.MODE_CBC, iv_zero)
-                decrypted_data = cipher_zero.decrypt(encrypted_data)
+            # Lista de estrategias de IV para probar
+            iv_strategies = [
+                # Estrategia 1: IV basado en índice (HLS estándar)
+                struct.pack('>16B', *([0] * 15 + [segment_index & 0xFF])),
                 
+                # Estrategia 2: IV basado en índice con formato largo
+                struct.pack('>Q', segment_index) + b'\x00' * 8,
+                
+                # Estrategia 3: IV zero (streams simples)
+                b'\x00' * 16,
+                
+                # Estrategia 4: IV con índice en formato little-endian
+                struct.pack('<Q', segment_index) + b'\x00' * 8,
+                
+                # Estrategia 5: IV con índice en los primeros 4 bytes
+                struct.pack('>I', segment_index) + b'\x00' * 12
+            ]
+            
+            for strategy_num, iv in enumerate(iv_strategies):
                 try:
-                    decrypted_data = unpad(decrypted_data, AES.block_size)
-                except ValueError:
-                    pass
-                
-                if len(decrypted_data) > 0 and decrypted_data[0] == 0x47:
-                    return decrypted_data
-                else:
-                    self.logger.warning(f"Segmento descifrado {segment_index} no tiene sync byte válido")
-                    return decrypted_data  # Devolver aunque no sea válido para debug
+                    # Crear cipher AES-128-CBC
+                    cipher = AES.new(key, AES.MODE_CBC, iv)
+                    
+                    # Descifrar datos
+                    decrypted_data = cipher.decrypt(encrypted_data)
+                    
+                    # Intentar remover padding PKCS7
+                    try:
+                        unpadded_data = unpad(decrypted_data, AES.block_size)
+                        # Si el unpad funciona, usar los datos sin padding
+                        test_data = unpadded_data
+                    except ValueError:
+                        # Si falla el unpad, usar datos originales
+                        test_data = decrypted_data
+                    
+                    # Verificar que el resultado sea un segmento TS válido
+                    if len(test_data) > 4:
+                        # Buscar sync byte en las primeras posiciones
+                        for offset in range(min(16, len(test_data))):
+                            if test_data[offset] == 0x47:
+                                self.logger.info(f"✅ Segmento {segment_index} descifrado con estrategia IV {strategy_num + 1}, sync byte en offset {offset}")
+                                # Si encontramos sync byte con offset, ajustar los datos
+                                if offset > 0:
+                                    return test_data[offset:]
+                                else:
+                                    return test_data
+                        
+                        # Si no encontramos sync byte, verificar si son datos válidos por entropía
+                        if self._appears_valid_ts_content(test_data):
+                            self.logger.info(f"✅ Segmento {segment_index} descifrado con estrategia IV {strategy_num + 1} (contenido válido sin sync byte)")
+                            return test_data
+                    
+                except Exception as cipher_error:
+                    continue  # Probar siguiente estrategia
+            
+            # Si todas las estrategias fallaron, devolver datos originales para debug
+            self.logger.warning(f"❌ Segmento {segment_index}: Todas las estrategias IV fallaron")
+            return None
                     
         except Exception as e:
-            self.logger.error(f"Error descifrando segmento {segment_index}: {e}")
+            self.logger.error(f"❌ Error crítico descifrando segmento {segment_index}: {e}")
             return None
+    
+    def _appears_valid_ts_content(self, data: bytes) -> bool:
+        """Verifica si los datos parecen ser contenido TS válido basado en patrones"""
+        if len(data) < 188:  # Tamaño mínimo de paquete TS
+            return False
+        
+        # Verificar si hay patrones repetitivos de 188 bytes (paquetes TS)
+        packet_size = 188
+        if len(data) >= packet_size * 2:
+            # Verificar si hay sync bytes cada 188 bytes
+            sync_found = 0
+            for i in range(0, min(len(data), packet_size * 5), packet_size):
+                if i < len(data) and data[i] == 0x47:
+                    sync_found += 1
+            
+            # Si encontramos al menos 2 sync bytes en posiciones correctas
+            if sync_found >= 2:
+                return True
+        
+        # Verificar entropía - datos TS tienen patrones específicos
+        unique_bytes = len(set(data[:min(1000, len(data))]))
+        entropy_ratio = unique_bytes / min(1000, len(data))
+        
+        # TS válido tiene entropía media (no muy alta como datos encriptados, no muy baja como datos constantes)
+        return 0.3 <= entropy_ratio <= 0.8
     
     def extract_keys_from_m3u8(self, m3u8_content: str) -> List[Dict]:
         """Extrae información de claves de encriptación del contenido M3U8"""
