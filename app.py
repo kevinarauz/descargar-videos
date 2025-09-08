@@ -1579,7 +1579,7 @@ function renombrarArchivo(filename) {
     const nuevoNombreLimpio = nuevoNombre.trim();
     
     if (!nuevoNombreLimpio) {
-        showNotification('❌ El nuevo nombre no puede estar vacío', 'danger');
+        showNotification('ERROR: El nuevo nombre no puede estar vacio', 'danger');
         return;
     }
     
@@ -1588,7 +1588,7 @@ function renombrarArchivo(filename) {
     }
     
     // Mostrar indicador de carga
-    showNotification('🔄 Renombrando archivo...', 'info');
+    showNotification('Renombrando archivo...', 'info');
     
     fetch('/renombrar/' + encodeURIComponent(filename), {
         method: 'POST',
@@ -1606,7 +1606,7 @@ function renombrarArchivo(filename) {
     })
     .then(data => {
         if (data.success) {
-            showNotification(`✅ Archivo renombrado a: ${data.nuevo_nombre}`, 'success');
+            showNotification('OK: Archivo renombrado a: ' + data.nuevo_nombre, 'success');
             
             // Actualizar el historial cuando se renombre un archivo
             setTimeout(function() {
@@ -1614,12 +1614,12 @@ function renombrarArchivo(filename) {
             }, 500);
         } else {
             const errorMsg = data.error || 'Error desconocido';
-            showNotification(`❌ Error al renombrar: ${errorMsg}`, 'danger');
+            showNotification('ERROR: Error al renombrar: ' + errorMsg, 'danger');
         }
     })
     .catch(error => {
         console.error('Error en renombrado:', error);
-        showNotification(`❌ Error de conexión: ${error.message}`, 'danger');
+        showNotification('ERROR: Error de conexion: ' + error.message, 'danger');
     });
 }
 
@@ -1629,8 +1629,8 @@ function renombrarArchivoFromData(button) {
     if (filename) {
         renombrarArchivo(filename);
     } else {
-        console.error('❌ No se encontró data-filename en el botón');
-        showNotification('❌ Error: No se pudo obtener el nombre del archivo', 'danger');
+        console.error('ERROR: No se encontro data-filename en el boton');
+        showNotification('ERROR: No se pudo obtener el nombre del archivo', 'danger');
     }
 }
 
@@ -1640,8 +1640,8 @@ function eliminarArchivoFromData(button) {
     if (filename) {
         eliminarArchivo(filename);
     } else {
-        console.error('❌ No se encontró data-filename en el botón');
-        showNotification('❌ Error: No se pudo obtener el nombre del archivo', 'danger');
+        console.error('ERROR: No se encontro data-filename en el boton');
+        showNotification('ERROR: No se pudo obtener el nombre del archivo', 'danger');
     }
 }
 
@@ -1650,7 +1650,7 @@ function renombrarDescargaActiva(download_id) {
     // Obtener el nombre actual del archivo
     const archivoElement = document.getElementById('archivo-' + download_id);
     if (!archivoElement) {
-        showNotification('❌ Error: No se pudo obtener la información de la descarga', 'danger');
+        showNotification('ERROR: No se pudo obtener la informacion de la descarga', 'danger');
         return;
     }
     
@@ -1666,7 +1666,7 @@ function renombrarDescargaActiva(download_id) {
     const nuevoNombreLimpio = nuevoNombre.trim();
     
     if (!nuevoNombreLimpio) {
-        showNotification('❌ El nuevo nombre no puede estar vacío', 'danger');
+        showNotification('ERROR: El nuevo nombre no puede estar vacio', 'danger');
         return;
     }
     
@@ -1680,7 +1680,7 @@ function renombrarDescargaActiva(download_id) {
     });
     
     // Mostrar indicador de carga
-    showNotification('🔄 Renombrando descarga activa...', 'info');
+    showNotification('Renombrando descarga activa...', 'info');
     
     fetch('/renombrar_descarga_activa/' + encodeURIComponent(download_id), {
         method: 'POST',
@@ -1703,8 +1703,8 @@ function renombrarDescargaActiva(download_id) {
         console.log('📄 Datos de respuesta:', data);
         
         if (data.success) {
-            showNotification(`✅ Descarga renombrada a: ${data.nuevo_nombre}`, 'success');
-            console.log('✅ Renombrado exitoso:', data.message);
+            showNotification('OK: Descarga renombrada a: ' + data.nuevo_nombre, 'success');
+            console.log('OK: Renombrado exitoso:', data.message);
             
             // Actualizar el nombre mostrado en la interfaz
             const archivoElement = document.getElementById('archivo-' + download_id);
@@ -1723,13 +1723,13 @@ function renombrarDescargaActiva(download_id) {
             }
         } else {
             const errorMsg = data.error || 'Error desconocido';
-            console.error('❌ Error del servidor:', errorMsg);
-            showNotification(`❌ Error al renombrar: ${errorMsg}`, 'danger');
+            console.error('ERROR: Error del servidor:', errorMsg);
+            showNotification('ERROR: Error al renombrar: ' + errorMsg, 'danger');
         }
     })
     .catch(error => {
-        console.error('❌ Error de red o JavaScript:', error);
-        showNotification(`❌ Error de conexión: ${error.message}`, 'danger');
+        console.error('ERROR: Error de red o JavaScript:', error);
+        showNotification('ERROR: Error de conexion: ' + error.message, 'danger');
     });
 }
 
@@ -2181,16 +2181,16 @@ function updateHistorial() {
                 '<div class="historial-meta">' +
                 item.tamaño + ' • ' + item.fecha;
             if(item.url){
-                html += '<span class="url-metadata">🔗 <span class="text-break" style="font-size:0.72em;">' + item.url + '</span></span>';
+                html += '<span class="url-metadata">URL: <span class="text-break" style="font-size:0.72em;">' + item.url + '</span></span>';
             }
             html += '</div></div>' +
                 '<div class="historial-actions">';
             if(item.url){
-                html += '<button class="btn btn-outline-info btn-sm" data-url="' + item.url + '" onclick="copiarUrlFromData(this)" title="Copiar URL">📋</button>' +
-                    '<button class="btn btn-outline-success btn-sm" data-url="' + item.url + '" onclick="reproducirUrlFromData(this)" title="Reproducir">▶️</button>';
+                html += '<button class="btn btn-outline-info btn-sm" data-url="' + item.url + '" onclick="copiarUrlFromData(this)" title="Copiar URL">Copiar</button>' +
+                    '<button class="btn btn-outline-success btn-sm" data-url="' + item.url + '" onclick="reproducirUrlFromData(this)" title="Reproducir">Play</button>';
             }
-            html += '<button class="btn btn-outline-warning btn-sm" data-filename="' + safeName + '" onclick="renombrarArchivoFromData(this)" title="Renombrar">✏️</button>' +
-                '<button class="btn btn-outline-danger btn-sm" data-filename="' + safeName + '" onclick="eliminarArchivoFromData(this)" title="Eliminar">🗑️</button>' +
+            html += '<button class="btn btn-outline-warning btn-sm" data-filename="' + safeName + '" onclick="renombrarArchivoFromData(this)" title="Renombrar">Renombrar</button>' +
+                '<button class="btn btn-outline-danger btn-sm" data-filename="' + safeName + '" onclick="eliminarArchivoFromData(this)" title="Eliminar">Eliminar</button>' +
                 '</div></li>';
             });
                     
@@ -2204,7 +2204,7 @@ function updateHistorial() {
                     totalElement.textContent = data.historial.length;
                 }
             } else {
-                console.error('❌ Error en respuesta del historial:', data);
+                console.error('ERROR: Error en respuesta del historial:', data);
             }
         })
         .catch(error => {
@@ -2751,7 +2751,7 @@ function mostrarDescargaActiva(download_id, url) {
     const playBtn = document.createElement('button');
     playBtn.className = 'btn btn-success btn-sm';
     playBtn.id = 'play-btn-' + download_id;
-    playBtn.innerHTML = '▶️';
+    playBtn.innerHTML = 'Play';
     playBtn.title = 'Reproducir video mientras se descarga';
     playBtn.setAttribute('data-download-id', download_id);
     playBtn.setAttribute('data-action', 'reproducir-url-activa');
@@ -2760,7 +2760,7 @@ function mostrarDescargaActiva(download_id, url) {
     const pauseBtn = document.createElement('button');
     pauseBtn.className = 'btn btn-warning btn-sm';
     pauseBtn.id = 'pause-btn-' + download_id;
-    pauseBtn.innerHTML = '⏸️';
+    pauseBtn.innerHTML = 'Pause';
     pauseBtn.title = 'Pausar descarga';
     pauseBtn.onclick = function() { pausarDescarga(download_id); };
     
@@ -2768,7 +2768,7 @@ function mostrarDescargaActiva(download_id, url) {
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'btn btn-danger btn-sm';
     cancelBtn.id = 'cancel-btn-' + download_id;
-    cancelBtn.textContent = '❌';
+    cancelBtn.textContent = 'Cancelar';
     cancelBtn.title = 'Cancelar descarga';
     cancelBtn.onclick = function() { cancelarDescarga(download_id); };
     
@@ -2776,7 +2776,7 @@ function mostrarDescargaActiva(download_id, url) {
     const renameBtn = document.createElement('button');
     renameBtn.className = 'btn btn-outline-warning btn-sm';
     renameBtn.id = 'rename-btn-' + download_id;
-    renameBtn.innerHTML = '✏️';
+    renameBtn.innerHTML = 'Renombrar';
     renameBtn.title = 'Renombrar archivo mientras se descarga';
     renameBtn.onclick = function() { renombrarDescargaActiva(download_id); };
     
@@ -2824,7 +2824,7 @@ function mostrarDescargaActiva(download_id, url) {
     const timeDiv = document.createElement('div');
     timeDiv.className = 'download-time';
     timeDiv.id = 'time-' + download_id;
-    timeDiv.innerHTML = '<strong>⏱️</strong> <span>00:00</span>';
+    timeDiv.innerHTML = '<strong>Tiempo:</strong> <span>00:00</span>';
     
     infoRow.appendChild(speedDiv);
     infoRow.appendChild(timeDiv);
@@ -2835,15 +2835,15 @@ function mostrarDescargaActiva(download_id, url) {
     
     const urlToggle = document.createElement('button');
     urlToggle.className = 'btn btn-link btn-sm p-0 small text-info';
-    urlToggle.innerHTML = '🔗 Mostrar URL';
+    urlToggle.innerHTML = 'Mostrar URL';
     urlToggle.onclick = function() {
         const urlDiv = document.getElementById('url-' + download_id);
         if (urlDiv.style.display === 'none') {
             urlDiv.style.display = 'block';
-            urlToggle.innerHTML = '🔗 Ocultar URL';
+            urlToggle.innerHTML = 'Ocultar URL';
         } else {
             urlDiv.style.display = 'none';
-            urlToggle.innerHTML = '🔗 Mostrar URL';
+            urlToggle.innerHTML = 'Mostrar URL';
         }
     };
     
@@ -2869,7 +2869,7 @@ function mostrarDescargaActiva(download_id, url) {
     if (url) {
         let copyBtn = document.createElement('button');
         copyBtn.className = 'btn btn-outline-info btn-sm';
-        copyBtn.innerHTML = '📋';
+        copyBtn.innerHTML = 'Copiar';
         copyBtn.title = 'Copiar URL';
         copyBtn.onclick = function() { copiarUrl(url); };
         urlDiv.appendChild(copyBtn);
@@ -3080,12 +3080,12 @@ function actualizarProgreso(download_id) {
                 notificacionesMostradas.add(notificationKey);
                 
                 // Preparar información adicional
-                let message = `✅ Descarga completada: ${data.output_file}`;
+                let message = 'OK: Descarga completada: ' + data.output_file;
                 if (data.total_time_formatted) {
-                    message += `\n⏱️ Tiempo: ${data.total_time_formatted}`;
+                    message += ' | Tiempo: ' + data.total_time_formatted;
                 }
                 if (data.download_speed && data.download_speed > 0) {
-                    message += `\n⚡ Velocidad promedio: ${data.download_speed.toFixed(1)} MB/s`;
+                    message += ' | Velocidad promedio: ' + data.download_speed.toFixed(1) + ' MB/s';
                 }
                 
                 showNotification(message, 'success');
@@ -3239,7 +3239,7 @@ function actualizarProgreso(download_id) {
                 
                 const urlDiv = document.createElement('div');
                 urlDiv.className = 'mt-2 url-display small';
-                urlDiv.innerHTML = '<strong>🔗 URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>';
+                urlDiv.innerHTML = '<strong>URL:</strong> <span class="text-break">' + (data.url || 'N/A') + '</span>';
                 
                 const buttonContainer = document.createElement('div');
                 buttonContainer.className = 'mt-2';
@@ -3247,7 +3247,7 @@ function actualizarProgreso(download_id) {
                 // Botón Reintentar
                 const retryBtn = document.createElement('button');
                 retryBtn.className = 'btn btn-warning btn-sm me-2';
-                retryBtn.innerHTML = '🔄 Reintentar';
+                retryBtn.innerHTML = 'Reintentar';
                 retryBtn.title = 'Reintentar descarga';
                 retryBtn.setAttribute('data-download-id', download_id);
                 retryBtn.setAttribute('data-action', 'reintentar-descarga');
@@ -3257,7 +3257,7 @@ function actualizarProgreso(download_id) {
                 if (data.can_resume) {
                     const continueBtn = document.createElement('button');
                     continueBtn.className = 'btn btn-info btn-sm me-2';
-                    continueBtn.innerHTML = '▶️ Continuar';
+                    continueBtn.innerHTML = 'Continuar';
                     continueBtn.title = 'Reanudar descarga';
                     continueBtn.setAttribute('data-download-id', download_id);
                 continueBtn.setAttribute('data-action', 'reanudar-descarga');
@@ -3674,7 +3674,7 @@ document.addEventListener('DOMContentLoaded', function() {
     criticalFunctions.forEach(funcName => {
         const localAvailable = typeof window[funcName] === 'function';
         const globalAvailable = typeof eval(funcName) === 'function';
-        console.log(`${funcName}: window.${funcName}=${localAvailable ? '✅' : '❌'}, ${funcName}=${globalAvailable ? '✅' : '❌'}`);
+        console.log(funcName + ': window.' + funcName + '=' + (localAvailable ? 'OK' : 'ERROR') + ', ' + funcName + '=' + (globalAvailable ? 'OK' : 'ERROR'));
     });
     
     // Funciones helper para event delegation
@@ -3684,7 +3684,7 @@ document.addEventListener('DOMContentLoaded', function() {
             headers: { 'Content-Type': 'application/json' }
         }).then(response => response.json()).then(data => {
             if (data.success) {
-                console.log('✅ Descarga anterior eliminada, creando nueva...');
+                console.log('OK: Descarga anterior eliminada, creando nueva...');
                 // Obtener datos de la descarga eliminada del servidor
                 fetch('/api/active_downloads')
                     .then(response => response.json())
@@ -3705,15 +3705,15 @@ document.addEventListener('DOMContentLoaded', function() {
                             }).then(r => r.json()).then(newData => {
                                 console.log('Nueva descarga creada:', newData);
                                 if (newData.download_id) {
-                                    console.log('✅ Reintento exitoso:', newData.download_id);
+                                    console.log('OK: Reintento exitoso:', newData.download_id);
                                     // Recargar descargas activas
                                     loadActiveDownloads();
                                 } else {
-                                    console.error('❌ Error en reintento:', newData.error);
+                                    console.error('ERROR: Error en reintento:', newData.error);
                                     alert('Error al reintentar: ' + (newData.error || 'Error desconocido'));
                                 }
                             }).catch(error => {
-                                console.error('❌ Error completo al reintentar:', error);
+                                console.error('ERROR: Error completo al reintentar:', error);
                                 alert('Error al reintentar: ' + error.message);
                             });
                         } else {
@@ -3723,10 +3723,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         alert('Error al obtener datos de la descarga: ' + error.message);
                     });
             } else {
-                console.error('❌ Error eliminando descarga:', data.error);
+                console.error('ERROR: Error eliminando descarga:', data.error);
             }
         }).catch(error => {
-            console.error('❌ Error en handleReintentarDescarga:', error);
+            console.error('ERROR: Error en handleReintentarDescarga:', error);
         });
     }
 
@@ -3736,15 +3736,15 @@ document.addEventListener('DOMContentLoaded', function() {
             headers: { 'Content-Type': 'application/json' }
         }).then(response => response.json()).then(data => {
             if (data.success) {
-                console.log('✅ Descarga reanudada exitosamente');
+                console.log('OK: Descarga reanudada exitosamente');
                 // Recargar descargas activas
                 loadActiveDownloads();
             } else {
-                console.error('❌ Error reanudando:', data.error);
+                console.error('ERROR: Error reanudando:', data.error);
                 alert('Error al reanudar: ' + data.error);
             }
         }).catch(error => {
-            console.error('❌ Error en handleReanudarDescarga:', error);
+            console.error('ERROR: Error en handleReanudarDescarga:', error);
             alert('Error al reanudar: ' + error.message);
         });
     }
@@ -3802,7 +3802,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     alert('No se pudo obtener la URL de la descarga');
                 }
             }).catch(error => {
-                console.error('❌ Error en handleReproducirUrlActiva:', error);
+                console.error('ERROR: Error en handleReproducirUrlActiva:', error);
                 alert('Error al reproducir: ' + error.message);
             });
     }
@@ -3819,12 +3819,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             switch(action) {
                 case 'reintentar-descarga':
-                    console.log('🔄 Reintentando descarga:', downloadId);
+                    console.log('REINTENTANDO: Reintentando descarga:', downloadId);
                     handleReintentarDescarga(downloadId);
                     break;
                     
                 case 'reanudar-descarga':
-                    console.log('▶️ Reanudando descarga:', downloadId);
+                    console.log('REANUDANDO: Reanudando descarga:', downloadId);
                     handleReanudarDescarga(downloadId);
                     break;
                     
@@ -3928,7 +3928,7 @@ function showQualitySelector(qualities, originalUrl) {
     const qualityContent = document.getElementById('quality-content');
     
     let html = '<div class="alert alert-success mb-3">';
-    html += '<strong>✅ Master Playlist detectado:</strong> Encontradas ' + qualities.length + ' opciones de calidad disponibles.';
+    html += '<strong>Master Playlist detectado:</strong> Encontradas ' + qualities.length + ' opciones de calidad disponibles.';
     html += '</div>';
     html += '<div class="row">';
     
@@ -3943,8 +3943,8 @@ function showQualitySelector(qualities, originalUrl) {
         html += `<strong>Bitrate:</strong> ${(quality.bandwidth / 1000000).toFixed(1)} Mbps`;
         html += `</p>`;
         html += '<div class="d-grid gap-2">';
-        html += `<button class="btn ${isDefault ? 'btn-primary' : 'btn-outline-primary'} btn-sm" onclick="selectQuality('${quality.url}', '${quality.label}')">`;
-        html += `${isDefault ? '⭐ ' : ''}Seleccionar${isDefault ? ' (Recomendada)' : ''}`;
+        html += '<button class="btn ' + (isDefault ? 'btn-primary' : 'btn-outline-primary') + ' btn-sm" onclick="selectQuality(\\"' + quality.url.replace(/'/g, "\\'") + '\\", \\"' + quality.label.replace(/'/g, "\\'") + '\\")">';
+        html += 'Seleccionar' + (isDefault ? ' (Recomendada)' : '');
         html += '</button>';
         html += '</div>';
         html += '</div>';
@@ -4025,6 +4025,9 @@ function analyzeDRM() {
     });
 }
 
+// Hacer la función disponible globalmente
+window.analyzeDRM = analyzeDRM;
+
 function displayDRMResults(data) {
     const drmContent = document.getElementById('drm-content');
     
@@ -4057,16 +4060,16 @@ function displayDRMResults(data) {
         
         // Si tiene AES-128, mostrar botón específico para AES
         if (data.has_aes128) {
-            html += `<button class="btn btn-success" onclick="startAESDecryption()">🔑 Descifrar AES-128</button>`;
+            html += '<button class="btn btn-success" onclick="startAESDecryption()">Descifrar AES-128</button>';
             html += `<small class="text-muted">Detectado: ${data.aes_keys.length} clave(s) AES-128</small>`;
         }
         
         // Botón genérico para otros tipos de DRM
         if (data.encryption_methods.some(method => method !== 'AES-128')) {
-            html += `<button class="btn btn-warning" onclick="startDRMDecryption()">🔓 Descifrar DRM Avanzado</button>`;
+            html += '<button class="btn btn-warning" onclick="startDRMDecryption()">Descifrar DRM Avanzado</button>';
         }
         
-        html += `<button class="btn btn-outline-secondary" onclick="showAnalysisReport('${data.academic_report}')">📋 Ver Reporte Académico</button>`;
+        html += '<button class="btn btn-outline-secondary" onclick="showAnalysisReport(\'' + data.academic_report + '\')'>Ver Reporte Academico</button>';
         html += '</div>';
     } else {
         html += '<div class="alert alert-info">El contenido no requiere descifrado DRM.<br>Puedes descargarlo normalmente.</div>';
@@ -4078,7 +4081,7 @@ function displayDRMResults(data) {
     // Área para progreso de descifrado
     html += '<div id="drm-decrypt-progress" style="display: none;" class="mt-3">';
     html += '<div class="card">';
-    html += '<div class="card-header"><h6 class="mb-0">⚙️ Progreso de Descifrado</h6></div>';
+    html += '<div class="card-header"><h6 class="mb-0">Progreso de Descifrado</h6></div>';
     html += '<div class="card-body" id="drm-decrypt-content"></div>';
     html += '</div></div>';
     
@@ -4237,16 +4240,17 @@ function monitorAESProgress(downloadId) {
                 
                 // Actualizar texto de estado
                 if (progressText) {
+                    const progressStr = (progress && typeof progress === 'number') ? progress.toFixed(1) : '0.0';
                     if (status.status === 'downloading') {
-                        progressText.innerHTML = `<small>🔑 Descifrando segmentos AES-128... (${progress.toFixed(1)}%)</small>`;
+                        progressText.innerHTML = '<small>🔑 Descifrando segmentos AES-128... (' + progressStr + '%)</small>';
                     } else if (status.status === 'merging') {
-                        progressText.innerHTML = `<small>🔧 Uniendo segmentos descifrados... (${progress.toFixed(1)}%)</small>`;
+                        progressText.innerHTML = '<small>🔧 Uniendo segmentos descifrados... (' + progressStr + '%)</small>';
                     } else if (status.status === 'completed') {
-                        progressText.innerHTML = `<small>✅ Descifrado AES-128 completado</small>`;
+                        progressText.innerHTML = '<small>Descifrado AES-128 completado</small>';
                     } else if (status.status === 'failed') {
-                        progressText.innerHTML = `<small>❌ Error en descifrado AES-128</small>`;
+                        progressText.innerHTML = '<small>Error en descifrado AES-128</small>';
                     } else {
-                        progressText.innerHTML = `<small>📥 Procesando... (${progress.toFixed(1)}%)</small>`;
+                        progressText.innerHTML = '<small>📥 Procesando... (' + progressStr + '%)</small>';
                     }
                 }
                 
@@ -4316,7 +4320,7 @@ function monitorDRMProgress(decryptId) {
                             // Mostrar tiempo transcurrido
                             const elapsedMinutes = Math.floor(elapsed / 60);
                             const elapsedSeconds = Math.floor(elapsed % 60);
-                            progressHtml += `<small class="text-muted">⏱️ Transcurrido: ${elapsedMinutes}m ${elapsedSeconds}s</small><br>`;
+                            progressHtml += '<small class="text-muted">Transcurrido: ' + elapsedMinutes + 'm ' + elapsedSeconds + 's</small><br>';
                             
                             // Mostrar tiempo restante si es razonable
                             if (eta > 0 && eta < 7200 && rate > 0) { // Solo mostrar si es < 2 horas y hay velocidad
@@ -4330,15 +4334,15 @@ function monitorDRMProgress(decryptId) {
                                         <small><strong>⏳ Tiempo restante estimado: ${etaMinutes}m ${etaSeconds}s</strong></small>
                                     </div>
                                 `;
-                                progressHtml += `<small class="text-info">📈 Velocidad: ${ratePerMin} seg/min</small><br>`;
+                                progressHtml += '<small class="text-info">Velocidad: ' + ratePerMin + ' seg/min</small><br>';
                             }
                         } else if (status.start_time) {
                             // Solo mostrar tiempo transcurrido si no hay suficientes datos para estimar
                             const elapsed = (Date.now() / 1000) - status.start_time;
                             const elapsedMinutes = Math.floor(elapsed / 60);
                             const elapsedSeconds = Math.floor(elapsed % 60);
-                            progressHtml += `<small class="text-muted">⏱️ Transcurrido: ${elapsedMinutes}m ${elapsedSeconds}s</small><br>`;
-                            progressHtml += `<small class="text-info">📊 Calculando tiempo restante...</small><br>`;
+                            progressHtml += '<small class="text-muted">Transcurrido: ' + elapsedMinutes + 'm ' + elapsedSeconds + 's</small><br>';
+                            progressHtml += '<small class="text-info">Calculando tiempo restante...</small><br>';
                         }
                     }
                     
@@ -4420,7 +4424,7 @@ function monitorDRMProgress(decryptId) {
                         const totalSeconds = Math.floor(totalTime % 60);
                         
                         html += `<div class="alert alert-success mb-3">`;
-                        html += `⏱️ <strong>Tiempo total del proceso:</strong> ${totalMinutes}m ${totalSeconds}s`;
+                        html += '<strong>Tiempo total del proceso:</strong> ' + totalMinutes + 'm ' + totalSeconds + 's';
                         
                         // Si hay información de merge, mostrar desglose
                         if (status.result && status.result.merge_result) {
@@ -4432,13 +4436,13 @@ function monitorDRMProgress(decryptId) {
                                 const decryptMinutes = Math.floor(decryptTime / 60);
                                 const decryptSecondsVal = Math.floor(decryptTime % 60);
                                 
-                                html += `<br><small class="text-muted">`;
-                                html += `🔓 Descifrado: ${decryptMinutes}m ${decryptSecondsVal}s • `;
-                                html += `🔧 Unión: ${mergeMinutes}m ${mergeSeconds}s`;
-                                html += `</small>`;
+                                html += '<br><small class="text-muted">';
+                                html += 'Descifrado: ' + decryptMinutes + 'm ' + decryptSecondsVal + 's • ';
+                                html += 'Union: ' + mergeMinutes + 'm ' + mergeSeconds + 's';
+                                html += '</small>';
                             }
                         }
-                        html += `</div>`;
+                        html += '</div>';
                     }
                     
                     if (status.total_segments) {
@@ -4461,9 +4465,9 @@ function monitorDRMProgress(decryptId) {
                             html += `<div class="mt-2">`;
                             html += `<strong>Clave ${keyCount} (${keyInfo.method}):</strong><br>`;
                             html += `<div class="font-monospace small bg-light p-2 border rounded">`;
-                            html += `🔑 Hex: <span class="text-primary">${keyInfo.hex}</span><br>`;
-                            html += `🌐 Origen: <code>${keyUri}</code><br>`;
-                            html += `💾 Archivo: <code>${keyInfo.file}</code>`;
+                            html += 'Hex: <span class="text-primary">' + keyInfo.hex + '</span><br>';
+                            html += 'Origen: <code>' + keyUri + '</code><br>';
+                            html += 'Archivo: <code>' + keyInfo.file + '</code>';
                             html += `</div></div>`;
                         }
                         html += '</div>';
@@ -4478,20 +4482,20 @@ function monitorDRMProgress(decryptId) {
                             html += '<div class="alert alert-success">';
                             html += '<strong>🎬 Video Final Creado</strong><br>';
                             html += `<div class="d-flex align-items-center mt-2">`;
-                            html += `<strong class="text-success me-2">📁 Archivo Final:</strong>`;
+                            html += '<strong class="text-success me-2">Archivo Final:</strong>';
                             html += `<span class="badge bg-success fs-6">${fileName}</span>`;
-                            html += `</div>`;
+                            html += '</div>';
                             html += `<div class="small text-muted mt-1">Ruta: <code>${status.merge_result.output_file}</code></div>`;
                             html += `<hr class="my-2">`;
-                            html += `📊 Segmentos unidos: ${status.merge_result.segments_merged}`;
+                            html += 'Segmentos unidos: ' + status.merge_result.segments_merged;
                             if (status.merge_result.segments_total) {
                                 html += ` de ${status.merge_result.segments_total}`;
                                 if (status.merge_result.segments_corrupted > 0) {
                                     html += ` (${status.merge_result.segments_corrupted} omitidos)`;
                                 }
                             }
-                            html += `<br>💾 Tamaño: ${(status.merge_result.final_size / (1024*1024)).toFixed(1)} MB<br>`;
-                            html += `⏱️ Tiempo de unión: ${status.merge_result.duration.toFixed(1)}s`;
+                            html += '<br>Tamano: ' + (status.merge_result.final_size / (1024*1024)).toFixed(1) + ' MB<br>';
+                            html += 'Tiempo de union: ' + status.merge_result.duration.toFixed(1) + 's';
                             html += '</div>';
                         } else {
                             html += '<div class="alert alert-warning">';
@@ -4516,7 +4520,7 @@ function monitorDRMProgress(decryptId) {
                     contentDiv.innerHTML = html;
                     
                 } else if (status.status === 'failed') {
-                    contentDiv.innerHTML = `<div class="alert alert-danger"><strong>❌ Error en descifrado:</strong><br>${status.error || 'Error desconocido'}</div>`;
+                    contentDiv.innerHTML = '<div class="alert alert-danger"><strong>ERROR en descifrado:</strong><br>' + (status.error || 'Error desconocido') + '</div>';
                 }
             }
         })
