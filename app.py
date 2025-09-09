@@ -4295,7 +4295,7 @@ function monitorAESProgress(downloadId) {
                 }
                 
                 // Continuar monitoreando si no está completado
-                if (data.status === 'downloading' || data.status === 'merging') {
+                if (data.status === 'analyzing' || data.status === 'downloading' || data.status === 'merging') {
                     setTimeout(checkProgress, 1000);
                 } else if (data.status === 'completed') {
                     // Mostrar resultado final
