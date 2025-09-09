@@ -4206,7 +4206,7 @@ function monitorAESProgress(downloadId) {
     const remainingSpan = document.getElementById('aes-remaining');
     
     const checkProgress = () => {
-        fetch(`/progress/${downloadId}`)
+        fetch(`/progreso/${downloadId}`)
         .then(response => response.json())
         .then(data => {
             if (data.status) {
@@ -7029,7 +7029,7 @@ def aes_decrypt_download():
         
         log_to_file(f"Iniciando descarga AES-128: {m3u8_url} -> {output_name}")
         
-        return jsonify({'download_id': download_id}), 202
+        return jsonify({'success': True, 'download_id': download_id}), 202
         
     except Exception as e:
         log_to_file(f"Error iniciando descarga AES: {str(e)}")
