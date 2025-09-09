@@ -5504,11 +5504,27 @@ def drm_progress_endpoint(download_id):
         if time_since_update > 300:  # 5 minutos sin actualización
             log_to_file(f"[DRM-{download_id}] DETECTADA DESCARGA COLGADA: {time_since_update/60:.1f} minutos sin actualización")
             
-            # Marcar como error por timeout
-            drm_progress[download_id]['status'] = 'error'
-            drm_progress[download_id]['error'] = f'Descarga colgada por {time_since_update/60:.1f} minutos. Posible timeout en segmento {progress_data.get("current", 0)}/{progress_data.get("total", 0)}'
-            drm_progress[download_id]['last_update_time'] = current_time
-            save_download_state()
+            current_seg = progress_data.get('current', 0)
+            total_seg = progress_data.get('total', 0)
+            
+            # Si está cerca del final (>95%), intentar completar con los fragmentos disponibles
+            if current_seg > 0 and total_seg > 0 and (current_seg / total_seg) >= 0.95:
+                log_to_file(f"[DRM-{download_id}] INTENTO DE RECUPERACIÓN: {current_seg}/{total_seg} ({current_seg/total_seg*100:.1f}%) completado")
+                
+                # Marcar como completando con advertencia
+                drm_progress[download_id]['status'] = 'completed'
+                drm_progress[download_id]['porcentaje'] = 100
+                drm_progress[download_id]['error'] = f'Completado con advertencia: Faltó segmento {current_seg+1}/{total_seg}. Posible video con {total_seg-current_seg} segundo(s) menos.'
+                drm_progress[download_id]['last_update_time'] = current_time
+                save_download_state()
+                
+                log_to_file(f"[DRM-{download_id}] RECUPERACIÓN EXITOSA: Marcado como completado con advertencia")
+            else:
+                # Marcar como error por timeout
+                drm_progress[download_id]['status'] = 'error'
+                drm_progress[download_id]['error'] = f'Descarga colgada por {time_since_update/60:.1f} minutos. Posible timeout en segmento {current_seg}/{total_seg}'
+                drm_progress[download_id]['last_update_time'] = current_time
+                save_download_state()
             
             progress_data = drm_progress[download_id].copy()
     
