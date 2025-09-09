@@ -1436,8 +1436,8 @@ window.toggleSpeedMode = toggleSpeedMode;
 function showNotification(message, type = 'info') {
     if (!userConfig.notifications) return;
     
-    // Convertir saltos de línea a <br> para mejor formato
-    const formattedMessage = message.replace(/\\n/g, '<br>');
+    // Convertir saltos de línea a <br> y escapar backticks para seguridad en innerHTML
+    const formattedMessage = message.replace(/\\n/g, '<br>').replace(/`/g, '\\`');
     
     const notification = document.createElement('div');
     notification.className = 'alert alert-' + type + ' position-fixed';
@@ -3763,7 +3763,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const playerWindow = window.open('', '_blank', 'width=800,height=600');
                     
                     // Crear el HTML completo del reproductor usando innerHTML
-                    const safeUrl = m3u8Url.replace(/'/g, "\\\\'").replace(/"/g, '\\\\"');
+                    const safeUrl = m3u8Url.replace(/'/g, "\\\\\\'").replace(/"/g, '\\\\\\"');
                     const htmlContent = [
                         '<!DOCTYPE html>',
                         '<html>',
@@ -3943,7 +3943,7 @@ function showQualitySelector(qualities, originalUrl) {
         html += `<strong>Bitrate:</strong> ${(quality.bandwidth / 1000000).toFixed(1)} Mbps`;
         html += `</p>`;
         html += '<div class="d-grid gap-2">';
-        html += '<button class="btn ' + (isDefault ? 'btn-primary' : 'btn-outline-primary') + ' btn-sm" onclick="selectQuality(\\"' + quality.url.replace(/'/g, "\\'") + '\\", \\"' + quality.label.replace(/'/g, "\\'") + '\\")">';
+        html += '<button class="btn ' + (isDefault ? 'btn-primary' : 'btn-outline-primary') + ' btn-sm" onclick="selectQuality(\\"' + quality.url.replace(/'/g, "\\\\'") + '\\", \\"' + quality.label.replace(/'/g, "\\\\'") + '\\")">';
         html += 'Seleccionar' + (isDefault ? ' (Recomendada)' : '');
         html += '</button>';
         html += '</div>';
@@ -4031,6 +4031,9 @@ window.analyzeDRM = analyzeDRM;
 function displayDRMResults(data) {
     const drmContent = document.getElementById('drm-content');
     
+    // Asignar el reporte a la variable global para el botón
+    lastDRMAnalysisReport = data.academic_report || '';
+    
     let html = '<div class="row">';
     
     // Resultados del análisis
@@ -4069,7 +4072,7 @@ function displayDRMResults(data) {
             html += '<button class="btn btn-warning" onclick="startDRMDecryption()">Descifrar DRM Avanzado</button>';
         }
         
-        html += '<button class="btn btn-outline-secondary" onclick="showAnalysisReport(\'' + data.academic_report + '\')'>Ver Reporte Academico</button>';
+        html += '<button class="btn btn-outline-secondary" onclick="showAnalysisReport()">Ver Reporte Academico</button>';
         html += '</div>';
     } else {
         html += '<div class="alert alert-info">El contenido no requiere descifrado DRM.<br>Puedes descargarlo normalmente.</div>';
@@ -4477,7 +4480,7 @@ function monitorDRMProgress(decryptId) {
                     if (status.merge_result) {
                         if (status.merge_result.success) {
                             // Extraer solo el nombre del archivo
-                            const fileName = status.merge_result.output_file.replace(/\\/g, '/').split('/').pop();
+                            const fileName = status.merge_result.output_file.replace(/\\\\/g, '/').split('/').pop();
                             
                             html += '<div class="alert alert-success">';
                             html += '<strong>🎬 Video Final Creado</strong><br>';
@@ -4532,10 +4535,14 @@ function monitorDRMProgress(decryptId) {
     checkProgress();
 }
 
+// Variable global para almacenar el último reporte de análisis DRM
+let lastDRMAnalysisReport = '';
+
 function showAnalysisReport(reportPath) {
-    if (reportPath) {
+    const reportToShow = reportPath || lastDRMAnalysisReport;
+    if (reportToShow) {
         const newWindow = window.open('', '_blank');
-        newWindow.document.write('<h3>Reporte Académico DRM</h3><p>Archivo: ' + reportPath + '</p>');
+        newWindow.document.write('<h3>Reporte Académico DRM</h3><pre>' + reportToShow + '</pre>');
     } else {
         showNotification('Reporte no disponible', 'warning');
     }
@@ -4650,13 +4657,16 @@ def sanitize_filename(filename):
     """Limpia el nombre del archivo de caracteres no seguros para Windows"""
     import re
     
-    # Caracteres prohibidos en Windows: < > : " | ? * \ /
+    # Caracteres prohibidos en Windows: < > : " | ? * \ / 
     # También eliminar caracteres de control (ASCII 0-31)
     forbidden_chars = r'[<>:"|?*\\/]'
     
     # Reemplazar caracteres prohibidos con guión bajo
     cleaned = re.sub(forbidden_chars, '_', filename)
     
+    # Reemplazar comillas simples para evitar errores de sintaxis en JavaScript
+    cleaned = cleaned.replace("'", "_")
+
     # Eliminar caracteres de control ASCII (0-31)
     cleaned = re.sub(r'[\x00-\x1f]', '', cleaned)
     
