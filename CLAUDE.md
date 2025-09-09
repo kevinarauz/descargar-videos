@@ -341,6 +341,27 @@ analizar_m3u8()                         # Flask: Pre-análisis de encriptación
 - Cancelación automática si tasa de fallo >95%
 - Logging detallado para identificar tipos de encriptación
 
+## 🆕 Mejoras Sistema DRM (Septiembre 2025)
+
+### **Problemas Críticos Resueltos:**
+- ✅ **Progreso AES 0.0% perpetuo** → Sistema de progreso DRM separado con actualización en tiempo real
+- ✅ **Descargas colgadas en 99%** → Detección automática de timeout + Recovery inteligente >95%
+- ✅ **Cache del navegador** → Sistema anti-caché completo (frontend + backend)
+- ✅ **Arquitectura mezclada** → Separación total `drm_progress` vs `multi_progress`
+
+### **Nuevos Endpoints DRM:**
+- `GET /drm_progress/<id>` - Progreso dedicado para descargas AES-128
+- Headers anti-caché automáticos en todas las respuestas DRM
+
+### **Características Agregadas:**
+- 🔍 **Estados informativos por fase**: analyzing → downloading → merging → completed
+- ⏰ **Detección automática timeout**: >5 minutos sin actualización
+- 🔄 **Recovery automático**: Auto-completa descargas >95% con advertencia
+- 📊 **Migración automática**: Descargas AES existentes migradas automáticamente
+- 🐛 **Debug logging**: Monitoreo detallado de todas las fases DRM
+
+**Ver detalles completos en:** `MEJORAS_SISTEMA_DRM.md`
+
 ### Estado Actual del Sistema
 
 El sistema M3U8 Downloader está completamente funcional y robusto, con capacidades avanzadas para:
