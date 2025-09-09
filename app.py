@@ -58,6 +58,7 @@ app.secret_key = 'supersecretkey'  # Cambia esto por una clave segura en producc
 
 # Variables globales para el control de descargas
 multi_progress = {}
+drm_progress = {}  # Sistema separado para descargas DRM/AES
 cancelled_downloads = set()
 download_queue_storage = []  # Cola persistente
 queue_running = False
@@ -4206,7 +4207,7 @@ function monitorAESProgress(downloadId) {
     const remainingSpan = document.getElementById('aes-remaining');
     
     const checkProgress = () => {
-        fetch(`/progreso/${downloadId}`)
+        fetch(`/drm_progress/${downloadId}`)
         .then(response => response.json())
         .then(data => {
             if (data.status) {
@@ -4598,8 +4599,8 @@ def index():
     # Estadísticas de descargas activas
     stats = get_download_stats()
     
-    # Retornar HTML sin template rendering para evitar conflictos con JavaScript
-    return default_html
+    # Renderizar template con variables
+    return default_html.replace('{{ url }}', url or '')
 
 def format_file_size(size_bytes):
     """Convierte bytes a formato legible"""
@@ -5436,6 +5437,21 @@ def progreso(download_id):
         return jsonify({'status': 'error', 'error': 'ID de descarga no encontrado.'}), 404
     
     progress_data = multi_progress[download_id].copy()
+    
+    # Añadir tiempos formateados
+    progress_data['elapsed_time_formatted'] = format_duration(progress_data.get('elapsed_time', 0))
+    progress_data['estimated_time_formatted'] = format_duration(progress_data.get('estimated_time', 0))
+    progress_data['total_time_formatted'] = format_duration(progress_data.get('total_time', 0))
+    
+    return jsonify(progress_data), 200
+
+@app.route('/drm_progress/<download_id>', methods=['GET'])
+def drm_progress_endpoint(download_id):
+    """Endpoint dedicado para progreso de descargas DRM/AES"""
+    if download_id not in drm_progress:
+        return jsonify({'status': 'error', 'error': 'ID de descarga DRM no encontrado.'}), 404
+    
+    progress_data = drm_progress[download_id].copy()
     
     # Añadir tiempos formateados
     progress_data['elapsed_time_formatted'] = format_duration(progress_data.get('elapsed_time', 0))
@@ -6982,8 +6998,8 @@ def aes_decrypt_download():
         # Generar ID único para la descarga
         download_id = str(uuid.uuid4())[:8]
         
-        # Configurar progreso inicial
-        multi_progress[download_id] = {
+        # Configurar progreso inicial en sistema DRM separado
+        drm_progress[download_id] = {
             'url': m3u8_url,
             'status': 'analyzing',
             'porcentaje': 0,
@@ -7007,12 +7023,12 @@ def aes_decrypt_download():
             'total_time_formatted': "00:00"
         }
         
-        # Función de callback para reportar progreso
+        # Función de callback para reportar progreso DRM
         def progress_callback(progress_data):
-            if download_id in multi_progress:
+            if download_id in drm_progress:
                 porcentaje = int((progress_data['segment_index'] / max(progress_data['total_segments'], 1)) * 100)
-                log_to_file(f"[{download_id}] Progreso: {progress_data['segment_index']}/{progress_data['total_segments']} ({porcentaje}%)")
-                multi_progress[download_id].update({
+                log_to_file(f"[DRM-{download_id}] Progreso: {progress_data['segment_index']}/{progress_data['total_segments']} ({porcentaje}%)")
+                drm_progress[download_id].update({
                     'porcentaje': porcentaje,
                     'current': progress_data['segment_index'],
                     'total': progress_data['total_segments'],
@@ -7041,15 +7057,15 @@ def process_aes_download(download_id: str, m3u8_url: str, output_name: str, prog
     log_to_file(f"[{download_id}] INICIANDO process_aes_download con URL: {m3u8_url}")
     try:
         # 1. Analizar M3U8 para detectar encriptación
-        multi_progress[download_id]['status'] = 'analyzing'
+        drm_progress[download_id]['status'] = 'analyzing'
         log_to_file(f"[{download_id}] Analizando M3U8 para encriptación AES-128")
         
         drm_module = DRMResearchModule()
         analysis_result = drm_module.analyze_m3u8_drm(m3u8_url)
         
         if not analysis_result.get('success'):
-            multi_progress[download_id]['status'] = 'error'
-            multi_progress[download_id]['error'] = 'Error analizando M3U8'
+            drm_progress[download_id]['status'] = 'error'
+            drm_progress[download_id]['error'] = 'Error analizando M3U8'
             return
         
         # 2. Extraer información de encriptación
@@ -7058,23 +7074,23 @@ def process_aes_download(download_id: str, m3u8_url: str, output_name: str, prog
         segments = manifest_info.get('segments', [])
         
         if not encryption_keys:
-            multi_progress[download_id]['status'] = 'error'
-            multi_progress[download_id]['error'] = 'No se encontraron claves de encriptación AES-128'
+            drm_progress[download_id]['status'] = 'error'
+            drm_progress[download_id]['error'] = 'No se encontraron claves de encriptación AES-128'
             return
         
         if not segments:
-            multi_progress[download_id]['status'] = 'error'
-            multi_progress[download_id]['error'] = 'No se encontraron segmentos para descargar'
+            drm_progress[download_id]['status'] = 'error'
+            drm_progress[download_id]['error'] = 'No se encontraron segmentos para descargar'
             return
         
-        multi_progress[download_id]['total'] = len(segments)
+        drm_progress[download_id]['total'] = len(segments)
         log_to_file(f"[{download_id}] Encontrados {len(segments)} segmentos y {len(encryption_keys)} claves")
         
         # 3. Crear descifrador AES
         aes_decryptor = AESDecryptor()
         
         # 4. Descifrar segmentos
-        multi_progress[download_id]['status'] = 'downloading'
+        drm_progress[download_id]['status'] = 'downloading'
         temp_decrypt_dir = f"temp_decrypted_{download_id}"
         
         decrypt_results = aes_decryptor.decrypt_disguised_segments(
