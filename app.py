@@ -7181,12 +7181,12 @@ def process_aes_download(download_id: str, m3u8_url: str, output_name: str, prog
         )
         
         if decrypt_results['decrypted_segments'] == 0:
-            multi_progress[download_id]['status'] = 'error'
-            multi_progress[download_id]['error'] = 'No se pudo descifrar ningún segmento'
+            drm_progress[download_id]['status'] = 'error'
+            drm_progress[download_id]['error'] = 'No se pudo descifrar ningún segmento'
             return
         
         # 5. Unir segmentos descifrados con FFmpeg
-        multi_progress[download_id]['status'] = 'merging'
+        drm_progress[download_id]['status'] = 'merging'
         output_path = get_organized_path(f"{output_name}.mp4")
         
         log_to_file(f"[{download_id}] Uniendo {decrypt_results['decrypted_segments']} segmentos descifrados")
@@ -7207,9 +7207,9 @@ def process_aes_download(download_id: str, m3u8_url: str, output_name: str, prog
         
         if result.returncode == 0:
             # Éxito
-            multi_progress[download_id]['status'] = 'completed'
-            multi_progress[download_id]['porcentaje'] = 100
-            multi_progress[download_id]['output_file'] = output_path
+            drm_progress[download_id]['status'] = 'completed'
+            drm_progress[download_id]['porcentaje'] = 100
+            drm_progress[download_id]['output_file'] = output_path
             
             # Limpiar archivos temporales
             import shutil
@@ -7223,13 +7223,13 @@ def process_aes_download(download_id: str, m3u8_url: str, output_name: str, prog
             
             log_to_file(f"[{download_id}] ✅ Descarga AES-128 completada: {output_path}")
         else:
-            multi_progress[download_id]['status'] = 'error'
-            multi_progress[download_id]['error'] = f'Error en FFmpeg: {result.stderr}'
+            drm_progress[download_id]['status'] = 'error'
+            drm_progress[download_id]['error'] = f'Error en FFmpeg: {result.stderr}'
             log_to_file(f"[{download_id}] ❌ Error FFmpeg: {result.stderr}")
             
     except Exception as e:
-        multi_progress[download_id]['status'] = 'error'
-        multi_progress[download_id]['error'] = f'Error procesando descarga AES: {str(e)}'
+        drm_progress[download_id]['status'] = 'error'
+        drm_progress[download_id]['error'] = f'Error procesando descarga AES: {str(e)}'
         log_to_file(f"[{download_id}] ❌ Error: {str(e)}")
 
 if __name__ == '__main__':
