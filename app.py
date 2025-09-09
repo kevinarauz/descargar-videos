@@ -4232,7 +4232,15 @@ function monitorAESProgress(downloadId) {
     });
     
     const checkProgress = () => {
-        fetch(`/drm_progress/${downloadId}`)
+        // Agregar timestamp para evitar caché
+        const timestamp = Date.now();
+        fetch(`/drm_progress/${downloadId}?t=${timestamp}`, {
+            cache: 'no-cache',
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            }
+        })
         .then(response => response.json())
         .then(data => {
             console.log('[DEBUG] AES Progress data:', data);
@@ -4271,7 +4279,9 @@ function monitorAESProgress(downloadId) {
                 // Actualizar texto de estado
                 if (progressText) {
                     const progressStr = (progress && typeof progress === 'number') ? progress.toFixed(1) : '0.0';
-                    if (data.status === 'downloading') {
+                    if (data.status === 'analyzing') {
+                        progressText.innerHTML = '<small>🔍 Analizando M3U8 y claves AES-128...</small>';
+                    } else if (data.status === 'downloading') {
                         progressText.innerHTML = '<small>🔑 Descifrando segmentos AES-128... (' + progressStr + '%)</small>';
                     } else if (data.status === 'merging') {
                         progressText.innerHTML = '<small>🔧 Uniendo segmentos descifrados... (' + progressStr + '%)</small>';
@@ -5490,7 +5500,12 @@ def drm_progress_endpoint(download_id):
     progress_data['estimated_time_formatted'] = format_duration(progress_data.get('estimated_time', 0))
     progress_data['total_time_formatted'] = format_duration(progress_data.get('total_time', 0))
     
-    return jsonify(progress_data), 200
+    # Headers para desactivar caché
+    response = jsonify(progress_data)
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response, 200
 
 @app.route('/cancelar/<download_id>', methods=['POST'])
 def cancelar_descarga(download_id):
