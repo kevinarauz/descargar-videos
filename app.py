@@ -4210,27 +4210,26 @@ function monitorAESProgress(downloadId) {
         .then(response => response.json())
         .then(data => {
             if (data.status) {
-                const status = data.status;
-                const progress = Math.min(100, Math.max(0, status.porcentaje || 0));
+                const progress = Math.min(100, Math.max(0, data.porcentaje || 0));
                 
                 // Actualizar barra de progreso
                 if (progressBar) progressBar.style.width = `${progress}%`;
                 
                 // Actualizar estadísticas
-                if (currentSpan) currentSpan.textContent = status.current || 0;
-                if (totalSpan) totalSpan.textContent = status.total || 0;
+                if (currentSpan) currentSpan.textContent = data.current || 0;
+                if (totalSpan) totalSpan.textContent = data.total || 0;
                 
                 // Calcular y mostrar tiempos
-                if (status.start_time) {
-                    const elapsed = (Date.now() / 1000) - status.start_time;
+                if (data.start_time) {
+                    const elapsed = (Date.now() / 1000) - data.start_time;
                     const elapsedMinutes = Math.floor(elapsed / 60);
                     const elapsedSeconds = Math.floor(elapsed % 60);
                     if (elapsedSpan) elapsedSpan.textContent = `${elapsedMinutes}m ${elapsedSeconds}s`;
                     
                     // Calcular tiempo restante
-                    if (status.current > 0 && status.total > 0) {
-                        const rate = status.current / elapsed;
-                        const remaining = (status.total - status.current) / rate;
+                    if (data.current > 0 && data.total > 0) {
+                        const rate = data.current / elapsed;
+                        const remaining = (data.total - data.current) / rate;
                         if (remaining > 0 && remaining < 7200 && rate > 0) { // Solo si es < 2 horas
                             const etaMinutes = Math.floor(remaining / 60);
                             const etaSeconds = Math.floor(remaining % 60);
@@ -4244,13 +4243,13 @@ function monitorAESProgress(downloadId) {
                 // Actualizar texto de estado
                 if (progressText) {
                     const progressStr = (progress && typeof progress === 'number') ? progress.toFixed(1) : '0.0';
-                    if (status.status === 'downloading') {
+                    if (data.status === 'downloading') {
                         progressText.innerHTML = '<small>🔑 Descifrando segmentos AES-128... (' + progressStr + '%)</small>';
-                    } else if (status.status === 'merging') {
+                    } else if (data.status === 'merging') {
                         progressText.innerHTML = '<small>🔧 Uniendo segmentos descifrados... (' + progressStr + '%)</small>';
-                    } else if (status.status === 'completed') {
+                    } else if (data.status === 'completed') {
                         progressText.innerHTML = '<small>Descifrado AES-128 completado</small>';
-                    } else if (status.status === 'failed') {
+                    } else if (data.status === 'failed') {
                         progressText.innerHTML = '<small>Error en descifrado AES-128</small>';
                     } else {
                         progressText.innerHTML = '<small>📥 Procesando... (' + progressStr + '%)</small>';
@@ -4258,16 +4257,16 @@ function monitorAESProgress(downloadId) {
                 }
                 
                 // Continuar monitoreando si no está completado
-                if (status.status === 'downloading' || status.status === 'merging') {
+                if (data.status === 'downloading' || data.status === 'merging') {
                     setTimeout(checkProgress, 1000);
-                } else if (status.status === 'completed') {
+                } else if (data.status === 'completed') {
                     // Mostrar resultado final
                     if (progressText) {
                         progressText.innerHTML = `
                             <div class="alert alert-success">
                                 ✅ <strong>Descifrado AES-128 Completado</strong><br>
-                                📄 Archivo: ${status.output_file || 'video_aes_descifrado.mp4'}<br>
-                                📊 ${status.current}/${status.total} segmentos procesados
+                                📄 Archivo: ${data.output_file || 'video_aes_descifrado.mp4'}<br>
+                                📊 ${data.current}/${data.total} segmentos procesados
                             </div>
                         `;
                     }
@@ -7011,8 +7010,10 @@ def aes_decrypt_download():
         # Función de callback para reportar progreso
         def progress_callback(progress_data):
             if download_id in multi_progress:
+                porcentaje = int((progress_data['segment_index'] / max(progress_data['total_segments'], 1)) * 100)
+                log_to_file(f"[{download_id}] Progreso: {progress_data['segment_index']}/{progress_data['total_segments']} ({porcentaje}%)")
                 multi_progress[download_id].update({
-                    'porcentaje': int((progress_data['segment_index'] / max(progress_data['total_segments'], 1)) * 100),
+                    'porcentaje': porcentaje,
                     'current': progress_data['segment_index'],
                     'total': progress_data['total_segments'],
                     'status': 'decrypting' if progress_data['status'] == 'decrypted' else 'downloading',
@@ -7037,6 +7038,7 @@ def aes_decrypt_download():
 
 def process_aes_download(download_id: str, m3u8_url: str, output_name: str, progress_callback):
     """Procesa descarga con descifrado AES-128"""
+    log_to_file(f"[{download_id}] INICIANDO process_aes_download con URL: {m3u8_url}")
     try:
         # 1. Analizar M3U8 para detectar encriptación
         multi_progress[download_id]['status'] = 'analyzing'
