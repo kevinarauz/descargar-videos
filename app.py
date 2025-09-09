@@ -4189,11 +4189,11 @@ function startAESDecryption() {
             // Iniciar monitoreo de progreso
             monitorAESProgress(data.download_id);
         } else {
-            contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+            contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error || 'Error desconocido del servidor'}</div>`;
         }
     })
     .catch(error => {
-        contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+        contentDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message || error || 'Error desconocido de conexión'}</div>`;
     });
 }
 
