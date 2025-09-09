@@ -205,6 +205,7 @@ def save_download_state():
     try:
         state = {
             'multi_progress': multi_progress,
+            'drm_progress': drm_progress,
             'download_queue': download_queue_storage,
             'queue_running': queue_running
         }
@@ -216,14 +217,30 @@ def save_download_state():
 def load_download_state():
     """Carga el estado de las descargas desde un archivo JSON"""
     import json
-    global multi_progress, download_queue_storage, queue_running
+    global multi_progress, download_queue_storage, queue_running, drm_progress
     try:
         if os.path.exists('download_state.json'):
             with open('download_state.json', 'r', encoding='utf-8') as f:
                 state = json.load(f)
                 multi_progress = state.get('multi_progress', {})
+                drm_progress = state.get('drm_progress', {})
                 download_queue_storage = state.get('download_queue', [])
                 queue_running = state.get('queue_running', False)
+                
+                # Migración: Mover descargas AES de multi_progress a drm_progress
+                aes_downloads_to_move = []
+                for download_id, data in multi_progress.items():
+                    if data.get('quality') == 'AES-128 Decrypted':
+                        aes_downloads_to_move.append(download_id)
+                
+                # Mover las descargas AES al sistema DRM
+                for download_id in aes_downloads_to_move:
+                    drm_progress[download_id] = multi_progress[download_id]
+                    del multi_progress[download_id]
+                    print(f"Migrada descarga AES {download_id} de multi_progress a drm_progress")
+                
+                if aes_downloads_to_move:
+                    print(f"Migradas {len(aes_downloads_to_move)} descargas AES al sistema DRM separado")
                 
                 # Limpiar descargas que ya no están activas
                 active_downloads = {}
@@ -235,7 +252,7 @@ def load_download_state():
                     active_downloads[download_id] = progress
                 multi_progress = active_downloads
                 
-                print(f"Estado cargado: {len(multi_progress)} descargas, {len(download_queue_storage)} en cola")
+                print(f"Estado cargado: {len(multi_progress)} descargas normales, {len(drm_progress)} descargas DRM, {len(download_queue_storage)} en cola")
     except Exception as e:
         print(f"Error cargando estado: {e}")
 
@@ -4199,6 +4216,7 @@ function startAESDecryption() {
 }
 
 function monitorAESProgress(downloadId) {
+    console.log('[DEBUG] Monitoring AES progress for download ID:', downloadId);
     const progressBar = document.getElementById('aes-progress-bar');
     const progressText = document.getElementById('aes-progress-text');
     const currentSpan = document.getElementById('aes-current');
@@ -4206,12 +4224,21 @@ function monitorAESProgress(downloadId) {
     const elapsedSpan = document.getElementById('aes-elapsed');
     const remainingSpan = document.getElementById('aes-remaining');
     
+    console.log('[DEBUG] Elements found:', {
+        progressBar: !!progressBar,
+        progressText: !!progressText,
+        currentSpan: !!currentSpan,
+        totalSpan: !!totalSpan
+    });
+    
     const checkProgress = () => {
         fetch(`/drm_progress/${downloadId}`)
         .then(response => response.json())
         .then(data => {
+            console.log('[DEBUG] AES Progress data:', data);
             if (data.status) {
                 const progress = Math.min(100, Math.max(0, data.porcentaje || 0));
+                console.log('[DEBUG] Progress calculated:', progress, '%');
                 
                 // Actualizar barra de progreso
                 if (progressBar) progressBar.style.width = `${progress}%`;
@@ -4275,7 +4302,12 @@ function monitorAESProgress(downloadId) {
             }
         })
         .catch(error => {
-            console.error('Error monitoring AES progress:', error);
+            console.error('[DEBUG] Error monitoring AES progress:', error);
+            console.error('[DEBUG] Full error details:', {
+                message: error.message,
+                name: error.name,
+                stack: error.stack
+            });
             if (progressText) {
                 progressText.innerHTML = '<small class="text-danger">Error monitoreando progreso</small>';
             }
