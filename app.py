@@ -5495,6 +5495,23 @@ def drm_progress_endpoint(download_id):
     
     progress_data = drm_progress[download_id].copy()
     
+    # Detectar descargas colgadas (sin actualización por >5 minutos)
+    if progress_data.get('status') == 'downloading':
+        last_update = progress_data.get('last_update_time', 0)
+        current_time = time.time()
+        time_since_update = current_time - last_update
+        
+        if time_since_update > 300:  # 5 minutos sin actualización
+            log_to_file(f"[DRM-{download_id}] DETECTADA DESCARGA COLGADA: {time_since_update/60:.1f} minutos sin actualización")
+            
+            # Marcar como error por timeout
+            drm_progress[download_id]['status'] = 'error'
+            drm_progress[download_id]['error'] = f'Descarga colgada por {time_since_update/60:.1f} minutos. Posible timeout en segmento {progress_data.get("current", 0)}/{progress_data.get("total", 0)}'
+            drm_progress[download_id]['last_update_time'] = current_time
+            save_download_state()
+            
+            progress_data = drm_progress[download_id].copy()
+    
     # Añadir tiempos formateados
     progress_data['elapsed_time_formatted'] = format_duration(progress_data.get('elapsed_time', 0))
     progress_data['estimated_time_formatted'] = format_duration(progress_data.get('estimated_time', 0))
